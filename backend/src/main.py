@@ -5,6 +5,7 @@ from kafka.errors import NoBrokersAvailable
 import json
 import time
 from datetime import datetime
+from system_logger import ui_logger as logger
 
 app = Flask(__name__)
 CORS(app)
@@ -12,13 +13,13 @@ CORS(app)
 def get_kafka_consumer(max_retries=30, retry_interval=2):
     """
     Creates a Kafka consumer instance with retry logic.
-    Returns a consumer that reads from the 'raw_tweets' topic.
+    Returns a consumer that reads from the 'tweets' topic.
     """
     retries = 0
     while retries < max_retries:
         try:
             consumer = KafkaConsumer(
-                'raw_tweets',
+                'tweets',
                 bootstrap_servers=['localhost:9092'],
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 auto_offset_reset='latest',
@@ -26,18 +27,18 @@ def get_kafka_consumer(max_retries=30, retry_interval=2):
                 enable_auto_commit=True,
                 api_version_auto_timeout_ms=30000
             )
-            print("Connected to Kafka successfully")
+            print("✅ Connected to Kafka successfully")
             return consumer
         except NoBrokersAvailable:
             retries += 1
-            print(f"Waiting for Kafka... Attempt {retries}/{max_retries}")
+            print(f"⏳ Waiting for Kafka... Attempt {retries}/{max_retries}")
             time.sleep(retry_interval)
         except Exception as e:
             retries += 1
-            print(f"Kafka connection error: {e}")
+            print(f"❌ Kafka connection error: {e}")
             time.sleep(retry_interval)
     
-    print("Failed to connect to Kafka after maximum retries")
+    print("❌ Failed to connect to Kafka after maximum retries")
     return None
 
 @app.route('/')
@@ -70,7 +71,7 @@ def format_sse(data: dict, event=None) -> str:
 
 def event_stream():
     """Generate SSE stream from Kafka messages"""
-    print("Client connected to SSE stream")
+    print("📡 Client connected to SSE stream")
     
     while True:
         # Try to get consumer
@@ -87,11 +88,11 @@ def event_stream():
             # Start consuming messages
             for message in consumer:
                 tweet = message.value
-                print(f"Streaming tweet: {tweet['raw_text'][:100]}...")
+                logger.ui_streamed(tweet.get('id', 'unknown'))
                 yield format_sse(tweet, "tweet")
 
         except Exception as e:
-            print(f"Error in stream: {e}")
+            print(f"❌ Error in stream: {e}")
             yield format_sse({"error": str(e)}, "error")
             if consumer:
                 consumer.close()
@@ -112,4 +113,5 @@ def stream_tweets():
     )
 
 if __name__ == "__main__":
+    print("🚀 Starting Flask Tweet Stream API...")
     app.run(host='0.0.0.0', port=9000, debug=True, threaded=True)

@@ -1,19 +1,36 @@
 #!/usr/bin/env python3
 """
-Simple Tweet Generator
-Generates tweets based on keywords and prints them to console
+Tweet Generator with Kafka Integration
+Generates tweets and sends them directly to Kafka
 """
 
 import json
 import random
 import time
+import logging
 from datetime import datetime
 from typing import Dict, Any
 from ollama import chat, ChatResponse
+from kafka import KafkaProducer
+from kafka.errors import KafkaError
+from system_logger import tweet_logger as logger
 
-class SimpleTweetAgent:
-    def __init__(self):
+
+class TweetGenerator:
+    def __init__(self, bootstrap_servers=['localhost:9092'], topic='tweets'):
         self.tweet_id_counter = 1
+        self.topic = topic
+        
+        # Initialize Kafka producer
+        try:
+            self.producer = KafkaProducer(
+                bootstrap_servers=bootstrap_servers,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8')
+            )
+            logger.system_event("KAFKA_CONNECTED", f"Bootstrap: {bootstrap_servers}")
+        except Exception as e:
+            logger.error(f"Failed to connect to Kafka: {e}")
+            raise
         
         # Test keywords (these would come from UI later)
         self.keywords = [
@@ -27,14 +44,22 @@ class SimpleTweetAgent:
             "developer burnout"
         ]
         
-        # US State abbreviations
-        self.states = [
-            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-            'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-            'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-            'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
-        ]
+        # US State abbreviations and names
+        self.states = {
+            'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+            'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware',
+            'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho',
+            'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas',
+            'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+            'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi',
+            'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
+            'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+            'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio', 'OK': 'Oklahoma',
+            'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+            'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+            'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+            'WI': 'Wisconsin', 'WY': 'Wyoming'
+        }
 
     def generate_tweet_content(self, keyword: str, state: str) -> str:
         """Generate tweet content using Ollama"""
@@ -47,7 +72,6 @@ class SimpleTweetAgent:
         """
         
         try:
-            print("Calling ollama")
             response: ChatResponse = chat(
                 model='llama3.2:3b',
                 messages=[{
@@ -55,13 +79,9 @@ class SimpleTweetAgent:
                     'content': prompt
                 }]
             )
-            print("Ollama response: ", response)
-            tweet_text = response.message.content.strip()
             
-            # Ensure tweet fits Twitter's character limit
-            if len(tweet_text) > 280:
-                tweet_text = tweet_text[:277] + "..."
-                
+            tweet_text = response["message"]["content"].strip()
+            
             # Ensure state tag is included
             if f"({state})" not in tweet_text:
                 tweet_text = tweet_text.rstrip() + f" ({state})"
@@ -69,63 +89,67 @@ class SimpleTweetAgent:
             return tweet_text
                 
         except Exception as e:
-            print(f"Error generating tweet: {e}")
+            logger.error(f"Error generating tweet: {e}")
             return f"Thoughts on {keyword}... 🤔 ({state})"
 
-    def generate_tweet(self, keyword: str = None) -> Dict[str, Any]:
-        """Generate a single tweet"""
+    def generate_and_send_tweet(self, keyword: str = None) -> bool:
+        """Generate a tweet and send it to Kafka"""
         if keyword is None:
             keyword = random.choice(self.keywords)
             
-        state = random.choice(self.states)
-        tweet_text = self.generate_tweet_content(keyword, state)
+        state_code = random.choice(list(self.states.keys()))
+        state_name = self.states[state_code]
         
-        # Create tweet object (same format as would go to Kafka)
+        tweet_text = self.generate_tweet_content(keyword, state_code)
+        
+        # Create tweet object matching database schema
         tweet = {
             "id": self.tweet_id_counter,
             "username": f"tech_{random.randint(1000, 9999)}",
             "raw_text": tweet_text,
             "timestamp": datetime.now().isoformat(),
-            "location": f"{state}",
-            "keyword": keyword,
+            "state_code": state_code,
+            "state_name": state_name,
+            "context": f"{keyword}",
             "likes": random.randint(0, 1000),
             "retweets": random.randint(0, 200),
-            "replies": random.randint(0, 50)
+            "replies": random.randint(0, 50),
+            "views": random.randint(500, 5000)
         }
         
-        self.tweet_id_counter += 1
-        return tweet
+        # Log tweet generation
+        logger.tweet_generated(tweet['id'], tweet['context'], tweet['state_code'], tweet['raw_text'])
+        
+        # Send to Kafka
+        try:
+            future = self.producer.send(self.topic, value=tweet)
+            record_metadata = future.get(timeout=10)
+            logger.kafka_sent(tweet['id'], self.topic, record_metadata.partition, record_metadata.offset)
+            self.tweet_id_counter += 1
+            return True
+        except KafkaError as e:
+            logger.kafka_failed(tweet['id'], str(e))
+            return False
 
-    def print_tweet(self, tweet: Dict[str, Any]):
-        """Print tweet in a readable format"""
-        print("\n📱 New Tweet Generated:")
-        print("=" * 50)
-        print(f"From: {tweet['username']} in {tweet['location']}")
-        print(f"Keyword: {tweet['keyword']}")
-        print(f"Tweet: {tweet['raw_text']}")
-        print(f"Engagement: ❤️ {tweet['likes']} | 🔄 {tweet['retweets']} | 💬 {tweet['replies']}")
-        print(f"Timestamp: {tweet['timestamp']}")
-        print("\nKafka message format:")
-        print(json.dumps(tweet, indent=2))
-        print("=" * 50)
+    def close(self):
+        """Close Kafka producer"""
+        if self.producer:
+            self.producer.close()
+            logger.system_event("KAFKA_PRODUCER_CLOSED")
 
 def main():
-    agent = SimpleTweetAgent()
-    print("\n🤖 Tweet Generator Started")
-    print("Available keywords:", ", ".join(agent.keywords))
-    print("\nGenerating tweets every 10 seconds... Press Ctrl+C to stop")
+    generator = TweetGenerator()
+    logger.system_event("TWEET_GENERATOR_STARTED", f"Keywords: {len(generator.keywords)}")
     
     try:
         while True:
-            # Generate tweet from random keyword
-            tweet = agent.generate_tweet()
-            agent.print_tweet(tweet)
-            
-            # Wait 10 seconds before next tweet
+            generator.generate_and_send_tweet()
             time.sleep(10)
             
     except KeyboardInterrupt:
-        print("\n\nTweet generator stopped")
+        logger.system_event("TWEET_GENERATOR_STOPPED")
+    finally:
+        generator.close()
 
 if __name__ == "__main__":
     main()
