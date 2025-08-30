@@ -1,14 +1,54 @@
 #!/bin/bash
 
+set -e  # Exit on any error
+
 echo "🚀 Starting Tweet System..."
+
+# Check if Docker is running
+if ! docker info > /dev/null 2>&1; then
+    echo "❌ Docker is not running. Please start Docker Desktop and try again."
+    exit 1
+fi
 
 # Start Docker services
 echo "📦 Starting Docker services..."
 docker-compose up -d
 
-# Wait for services to be ready
-echo "⏳ Waiting for services to be ready..."
-sleep 10
+# Give services initial time to start
+sleep 5
+
+# Wait for PostgreSQL to be ready
+echo "⏳ Waiting for PostgreSQL to be ready..."
+POSTGRES_WAIT=0
+until docker-compose exec -T postgres pg_isready -U tweetuser -d tweetdb > /dev/null 2>&1; do
+  echo "  - PostgreSQL not ready yet, waiting... (${POSTGRES_WAIT}s)"
+  sleep 2
+  POSTGRES_WAIT=$((POSTGRES_WAIT + 2))
+  if [ $POSTGRES_WAIT -gt 60 ]; then
+    echo "❌ PostgreSQL failed to start within 60 seconds"
+    exit 1
+  fi
+done
+echo "✅ PostgreSQL is ready"
+
+# Wait for Kafka to be ready
+echo "⏳ Waiting for Kafka to be ready..."
+KAFKA_WAIT=0
+until docker-compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --list > /dev/null 2>&1; do
+  echo "  - Kafka not ready yet, waiting... (${KAFKA_WAIT}s)"
+  sleep 3
+  KAFKA_WAIT=$((KAFKA_WAIT + 3))
+  if [ $KAFKA_WAIT -gt 90 ]; then
+    echo "❌ Kafka failed to start within 90 seconds"
+    exit 1
+  fi
+done
+echo "✅ Kafka is ready"
+
+# Create tweets topic if it doesn't exist
+echo "🔧 Creating Kafka topic 'tweets'..."
+docker-compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --topic tweets --partitions 3 --replication-factor 1 --if-not-exists > /dev/null 2>&1
+echo "✅ Kafka topic ready"
 
 # Start Python services in background using the virtual environment
 echo "🐍 Starting Python services..."

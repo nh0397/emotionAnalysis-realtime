@@ -58,7 +58,7 @@ const TweetDashboard = ({ tweets, loading, error }) => {
     return (
       <div className="tweet-dashboard">
         <div className="error-container">
-          <h3>⚠️ Error</h3>
+          <h3>Error</h3>
           <p>{error}</p>
         </div>
       </div>
@@ -104,18 +104,19 @@ const TweetDashboard = ({ tweets, loading, error }) => {
               </div>
 
               <div className="tweet-topic">
-                <span className="topic-category">📌 {tweet.topic_category}</span>
-                <span className="specific-topic">• {tweet.specific_topic}</span>
-                <span 
-                  className="sentiment-badge"
-                  style={{ backgroundColor: getSentimentColor(tweet.sentiment) }}
-                >
-                  {tweet.sentiment}
-                </span>
+                <span className="topic-category">{tweet.context || 'Tech'}</span>
+                {tweet.emotion && (
+                  <span 
+                    className="sentiment-badge"
+                    style={{ backgroundColor: getSentimentColor(tweet.emotion) }}
+                  >
+                    {tweet.emotion}
+                  </span>
+                )}
               </div>
 
               <div className="tweet-location">
-                📍 {tweet.state_name} ({tweet.state_code})
+                {tweet.state_name} ({tweet.state_code})
               </div>
 
               <div className="tweet-stats">

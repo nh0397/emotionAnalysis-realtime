@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
+import Navigation from './components/Navigation';
 import TweetDashboard from './components/TweetDashboard';
+import HistoricalTweets from './components/HistoricalTweets';
+import Analytics from './components/Analytics';
 
 function App() {
+  const [currentPage, setCurrentPage] = useState('live');
   const [tweets, setTweets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -10,6 +14,15 @@ function App() {
   const eventSourceRef = useRef(null);
 
   useEffect(() => {
+    // Only connect to SSE when on live page
+    if (currentPage !== 'live') {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      return;
+    }
+
     const connectEventSource = () => {
       // Close existing connection if any
       if (eventSourceRef.current) {
@@ -34,7 +47,7 @@ function App() {
           console.log('Received tweet:', tweet);
           setTweets(prevTweets => {
             const newTweets = [tweet, ...prevTweets];
-            return newTweets.slice(0, 50); // Keep only latest 50 tweets
+            return newTweets.slice(0, 100); // Keep latest 100 tweets in memory
           });
         } catch (err) {
           console.error('Error parsing tweet:', err);
@@ -64,38 +77,57 @@ function App() {
       };
     };
 
-    // Start connection
+    // Start connection for live page
     connectEventSource();
 
-    // Cleanup on unmount
+    // Cleanup on unmount or page change
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
     };
-  }, []);
+  }, [currentPage]);
+
+  const renderCurrentPage = () => {
+    switch (currentPage) {
+      case 'live':
+        return (
+          <>
+            <div className="page-header">
+              <div className="connection-status">
+                <span className={`status-indicator ${connectionStatus}`}>
+                  {connectionStatus === 'connected' && 'Live Stream Active'}
+                  {connectionStatus === 'connecting' && 'Connecting...'}
+                  {connectionStatus === 'error' && 'Connection Error'}
+                </span>
+              </div>
+            </div>
+            <TweetDashboard
+              tweets={tweets}
+              loading={loading}
+              error={error}
+              connectionStatus={connectionStatus}
+            />
+          </>
+        );
+      case 'history':
+        return <HistoricalTweets />;
+      case 'metrics':
+        return <Analytics />;
+      default:
+        return <div>Page not found</div>;
+    }
+  };
 
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>🤖 Tech Tweet Stream</h1>
-        <p>Real-time AI, GenAI, and Tech Innovation Updates</p>
-        <div className="connection-status">
-          <span className={`status-indicator ${connectionStatus}`}>
-            {connectionStatus === 'connected' && '🟢 Connected'}
-            {connectionStatus === 'connecting' && '🟡 Connecting...'}
-            {connectionStatus === 'error' && '🔴 Error'}
-          </span>
-        </div>
-      </header>
-
+      <Navigation 
+        currentPage={currentPage} 
+        onPageChange={setCurrentPage} 
+      />
+      
       <main className="App-main">
-        <TweetDashboard
-          tweets={tweets}
-          loading={loading}
-          error={error}
-          connectionStatus={connectionStatus}
-        />
+        {renderCurrentPage()}
       </main>
     </div>
   );
