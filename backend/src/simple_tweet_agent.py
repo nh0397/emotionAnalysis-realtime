@@ -14,12 +14,24 @@ from ollama import chat, ChatResponse
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 from system_logger import tweet_logger as logger
+from nlp_pipeline import CustomEmotionAnalyzer
 
 
 class TweetGenerator:
     def __init__(self, bootstrap_servers=['localhost:9092'], topic='tweets'):
         self.tweet_id_counter = 1
         self.topic = topic
+        
+        # Initialize NLP Pipeline
+        logger.system_event("INITIALIZING_NLP_PIPELINE")
+        start_time = time.time()
+        try:
+            self.emotion_analyzer = CustomEmotionAnalyzer()
+            nlp_load_time = time.time() - start_time
+            logger.system_event("NLP_PIPELINE_LOADED", f"Load time: {nlp_load_time:.2f}s")
+        except Exception as e:
+            logger.error(f"Failed to initialize NLP pipeline: {e}")
+            raise
         
         # Initialize Kafka producer
         try:
@@ -93,16 +105,42 @@ class TweetGenerator:
             return f"Thoughts on {keyword}... 🤔 ({state})"
 
     def generate_and_send_tweet(self, keyword: str = None) -> bool:
-        """Generate a tweet and send it to Kafka"""
+        """Generate a tweet and send it to Kafka with NLP processing"""
         if keyword is None:
             keyword = random.choice(self.keywords)
             
         state_code = random.choice(list(self.states.keys()))
         state_name = self.states[state_code]
         
-        tweet_text = self.generate_tweet_content(keyword, state_code)
+        # Start timing the entire process
+        total_start_time = time.time()
         
-        # Create tweet object matching database schema
+        # Generate tweet content
+        generation_start = time.time()
+        tweet_text = self.generate_tweet_content(keyword, state_code)
+        generation_time = time.time() - generation_start
+        
+        # Process through NLP pipeline
+        nlp_start_time = time.time()
+        try:
+            emotion_results = self.emotion_analyzer.analyze_emotion(tweet_text)
+            nlp_time = time.time() - nlp_start_time
+            
+            # Log NLP processing time
+            logger.system_event("NLP_PROCESSED", f"Tweet {self.tweet_id_counter}: {nlp_time:.3f}s")
+            
+        except Exception as e:
+            nlp_time = time.time() - nlp_start_time
+            logger.error(f"NLP processing failed for tweet {self.tweet_id_counter}: {e}")
+            # Fallback emotion values
+            emotion_results = {
+                'anger': 0.0, 'fear': 0.0, 'positive': 0.5, 'sadness': 0.0,
+                'surprise': 0.0, 'joy': 0.5, 'anticipation': 0.0, 'trust': 0.0,
+                'negative': 0.0, 'disgust': 0.0, 'dominant_emotion': 'positive',
+                'confidence': 0.5, 'compound': 0.0
+            }
+        
+        # Create tweet object with NLP results
         tweet = {
             "id": self.tweet_id_counter,
             "username": f"tech_{random.randint(1000, 9999)}",
@@ -114,11 +152,25 @@ class TweetGenerator:
             "likes": random.randint(0, 1000),
             "retweets": random.randint(0, 200),
             "replies": random.randint(0, 50),
-            "views": random.randint(500, 5000)
+            "views": random.randint(500, 5000),
+            # Add emotion analysis results
+            **emotion_results,
+            # Add performance metrics
+            "processing_times": {
+                "generation_ms": round(generation_time * 1000, 1),
+                "nlp_ms": round(nlp_time * 1000, 1),
+                "total_ms": round((time.time() - total_start_time) * 1000, 1)
+            }
         }
         
-        # Log tweet generation
-        logger.tweet_generated(tweet['id'], tweet['context'], tweet['state_code'], tweet['raw_text'])
+        # Log tweet generation with timing
+        total_time = time.time() - total_start_time
+        logger.tweet_generated(
+            tweet['id'], 
+            tweet['context'], 
+            tweet['state_code'], 
+            f"{tweet['raw_text'][:50]}... | Gen: {generation_time:.2f}s, NLP: {nlp_time:.3f}s, Total: {total_time:.3f}s"
+        )
         
         # Send to Kafka
         try:
