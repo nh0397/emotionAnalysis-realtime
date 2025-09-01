@@ -65,7 +65,8 @@ def root():
         "version": "2.0.0",
         "endpoints": {
             "real-time": "/tweets/stream",
-            "historical": "/tweets/history",
+            "historical": "/tweets/history", 
+            "states": "/tweets/states",
             "metrics": "/tweets/metrics",
             "health": "/health"
         }
@@ -200,6 +201,37 @@ def get_tweet_history():
         
     except Exception as e:
         logger.error(f"Failed to get tweet history: {e}")
+        return jsonify({"error": "Database query failed"}), 500
+
+@app.route('/tweets/states')
+def get_unique_states():
+    """Get all unique states from the database for filtering"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Get unique states with their names, ordered by state code
+        cursor.execute("""
+            SELECT DISTINCT state_code, state_name 
+            FROM tweets 
+            WHERE state_code IS NOT NULL AND state_name IS NOT NULL
+            ORDER BY state_code
+        """)
+        
+        states = [{"code": row[0], "name": row[1]} for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            "states": states,
+            "count": len(states)
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get unique states: {e}")
         return jsonify({"error": "Database query failed"}), 500
 
 @app.route('/tweets/metrics')

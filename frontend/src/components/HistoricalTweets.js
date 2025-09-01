@@ -8,6 +8,8 @@ function HistoricalTweets() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedState, setSelectedState] = useState('');
+  const [availableStates, setAvailableStates] = useState([]);
+  const [statesLoading, setStatesLoading] = useState(true);
 
   const fetchTweets = async (pageNum = 1, stateFilter = '') => {
     setLoading(true);
@@ -37,6 +39,28 @@ function HistoricalTweets() {
       setLoading(false);
     }
   };
+
+  const fetchStates = async () => {
+    setStatesLoading(true);
+    try {
+      const response = await fetch('http://localhost:9000/tweets/states');
+      const data = await response.json();
+      
+      if (response.ok) {
+        setAvailableStates(data.states);
+      } else {
+        console.error('Failed to fetch states:', data.error);
+      }
+    } catch (err) {
+      console.error('Error fetching states:', err);
+    } finally {
+      setStatesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStates(); // Fetch available states when component mounts
+  }, []);
 
   useEffect(() => {
     fetchTweets(page, selectedState);
@@ -84,14 +108,18 @@ function HistoricalTweets() {
           value={selectedState} 
           onChange={(e) => handleStateFilter(e.target.value)}
           className="state-filter"
+          disabled={statesLoading}
         >
           <option value="">All States</option>
-          <option value="CA">California</option>
-          <option value="NY">New York</option>
-          <option value="TX">Texas</option>
-          <option value="FL">Florida</option>
-          <option value="WA">Washington</option>
-          <option value="MA">Massachusetts</option>
+          {statesLoading ? (
+            <option disabled>Loading states...</option>
+          ) : (
+            availableStates.map((state) => (
+              <option key={state.code} value={state.code}>
+                {state.name} ({state.code})
+              </option>
+            ))
+          )}
         </select>
       </div>
 

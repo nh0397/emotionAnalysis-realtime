@@ -99,6 +99,9 @@ wheels/
 *.egg
 MANIFEST
 
+# Client folder (temporary development)
+client/
+
 # Misc
 .DS_Store
 .env.local
