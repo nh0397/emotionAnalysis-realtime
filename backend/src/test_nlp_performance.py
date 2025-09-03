@@ -11,7 +11,7 @@ from datetime import datetime
 from ollama import chat, ChatResponse
 from nlp_pipeline import CustomEmotionAnalyzer
 from simple_tweet_agent import TweetGenerator
-from system_logger import tweet_logger as logger
+from unified_logger import logger
 
 class LightweightTweetTester:
     def __init__(self):

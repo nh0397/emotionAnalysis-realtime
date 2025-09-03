@@ -6,6 +6,7 @@ Consumes tweets from Kafka and stores them in PostgreSQL database
 
 import json
 import psycopg2
+import psycopg2.errors
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 from datetime import datetime
@@ -13,6 +14,7 @@ import sys
 import signal
 import time
 from typing import Dict, Any
+from unified_logger import logger
 
 class DatabaseConsumer:
     def __init__(
@@ -42,6 +44,8 @@ class DatabaseConsumer:
         
         # Initialize Kafka consumer with retries
         self.connect_kafka()
+        
+        logger.system_event("DB_CONSUMER_STARTED")
 
     def connect_kafka(self, max_retries=30, retry_interval=2):
         """Connect to Kafka with retries"""
@@ -49,7 +53,7 @@ class DatabaseConsumer:
         while retries < max_retries:
             try:
                 self.consumer = KafkaConsumer(
-                    'raw_tweets',
+                    'tweets',  # FIXED: Correct topic name
                     bootstrap_servers=self.kafka_bootstrap_servers,
                     value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                     auto_offset_reset='earliest',
@@ -57,18 +61,11 @@ class DatabaseConsumer:
                     enable_auto_commit=True,
                     api_version_auto_timeout_ms=30000
                 )
-                print(f"Connected to Kafka at {self.kafka_bootstrap_servers}")
                 return True
-            except NoBrokersAvailable:
-                retries += 1
-                print(f"Waiting for Kafka to be ready... Attempt {retries}/{max_retries}")
-                time.sleep(retry_interval)
             except Exception as e:
-                print(f"Failed to connect to Kafka: {e}")
-                time.sleep(retry_interval)
                 retries += 1
+                time.sleep(retry_interval)
 
-        print("Failed to connect to Kafka after maximum retries")
         return False
 
     def wait_for_postgres(self, max_retries=30, delay=1):
@@ -78,14 +75,11 @@ class DatabaseConsumer:
             try:
                 conn = psycopg2.connect(**self.db_params)
                 conn.close()
-                print("Successfully connected to PostgreSQL")
                 return True
             except psycopg2.OperationalError:
                 retries += 1
-                print(f"Waiting for PostgreSQL... ({retries}/{max_retries})")
                 time.sleep(delay)
         
-        print("Failed to connect to PostgreSQL after maximum retries")
         return False
 
     def init_database(self):
@@ -97,7 +91,7 @@ class DatabaseConsumer:
             conn = psycopg2.connect(**self.db_params)
             cursor = conn.cursor()
             
-            # Create tweets table
+            # Create tweets table with ALL emotion columns
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS tweets (
                     id SERIAL PRIMARY KEY,
@@ -112,7 +106,20 @@ class DatabaseConsumer:
                     retweets INTEGER DEFAULT 0,
                     replies INTEGER DEFAULT 0,
                     views INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    anger FLOAT DEFAULT 0.0,
+                    fear FLOAT DEFAULT 0.0,
+                    positive FLOAT DEFAULT 0.0,
+                    sadness FLOAT DEFAULT 0.0,
+                    surprise FLOAT DEFAULT 0.0,
+                    joy FLOAT DEFAULT 0.0,
+                    anticipation FLOAT DEFAULT 0.0,
+                    trust FLOAT DEFAULT 0.0,
+                    negative FLOAT DEFAULT 0.0,
+                    disgust FLOAT DEFAULT 0.0,
+                    compound FLOAT DEFAULT 0.0,
+                    dominant_emotion VARCHAR(50),
+                    confidence FLOAT DEFAULT 0.0
                 )
             ''')
             
@@ -123,48 +130,87 @@ class DatabaseConsumer:
             
             conn.commit()
             conn.close()
-            print("Database initialized with tables and indexes")
             
         except Exception as e:
-            print(f"Failed to initialize database: {e}")
             sys.exit(1)
 
     def store_tweet(self, tweet: Dict[str, Any]):
-        """Store tweet in database"""
+        """Store tweet in database with emotion data"""
         try:
-            conn = psycopg2.connect(**self.db_params)
-            cursor = conn.cursor()
+            # Convert and validate data types EXPLICITLY
+            tweet_id = int(tweet['id'])
+            username = str(tweet['username'])
+            raw_text = str(tweet['raw_text'])
+            timestamp = str(tweet['timestamp'])
+            state_code = str(tweet['state_code'])
+            state_name = str(tweet['state_name'])
+            context = str(tweet['context'])
             
-            cursor.execute('''
+            # Convert engagement metrics to integers
+            likes = int(tweet.get('likes', 0))
+            retweets = int(tweet.get('retweets', 0))
+            replies = int(tweet.get('replies', 0))
+            views = int(tweet.get('views', 0))
+            
+            # Convert emotion scores to floats (CRITICAL!)
+            anger = float(tweet.get('anger', 0.0))
+            fear = float(tweet.get('fear', 0.0))
+            positive = float(tweet.get('positive', 0.0))
+            sadness = float(tweet.get('sadness', 0.0))
+            surprise = float(tweet.get('surprise', 0.0))
+            joy = float(tweet.get('joy', 0.0))
+            anticipation = float(tweet.get('anticipation', 0.0))
+            trust = float(tweet.get('trust', 0.0))
+            negative = float(tweet.get('negative', 0.0))
+            disgust = float(tweet.get('disgust', 0.0))
+            compound = float(tweet.get('compound', 0.0))
+            confidence = float(tweet.get('confidence', 0.0))
+            
+            dominant_emotion = str(tweet.get('dominant_emotion', 'neutral'))
+            
+            # CREATE THE ACTUAL SQL STRING to see exactly what we're executing
+            sql_query = f"""
                 INSERT INTO tweets (
                     tweet_id, username, raw_text, timestamp, 
                     state_code, state_name, context,
-                    likes, retweets, replies, views
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ''', (
-                tweet['id'],
-                tweet['username'],
-                tweet['raw_text'],
-                tweet['timestamp'],
-                tweet['state_code'],
-                tweet['state_name'],
-                tweet['context'],
-                tweet.get('likes', 0),
-                tweet.get('retweets', 0),
-                tweet.get('replies', 0),
-                tweet.get('views', 0)
-            ))
+                    likes, retweets, replies, views,
+                    anger, fear, positive, sadness, surprise, joy, 
+                    anticipation, trust, negative, disgust, 
+                    compound, dominant_emotion, confidence
+                ) VALUES (
+                    {tweet_id}, '{username}', '{raw_text.replace("'", "''")}', '{timestamp}', 
+                    '{state_code}', '{state_name}', '{context}',
+                    {likes}, {retweets}, {replies}, {views},
+                    {anger}, {fear}, {positive}, {sadness}, {surprise}, {joy}, 
+                    {anticipation}, {trust}, {negative}, {disgust}, 
+                    {compound}, '{dominant_emotion}', {confidence}
+                )
+            """
+            
+            # Log the EXACT SQL being executed
+            logger.system_event("SQL_DEBUG", f"Executing SQL: {sql_query}")
+            
+            # Log specific emotion values for debugging
+            logger.system_event("EMOTION_VALUES_DEBUG", 
+                f"Tweet {tweet_id}: anger={anger}({type(anger)}), joy={joy}({type(joy)}), positive={positive}({type(positive)}), dominant={dominant_emotion}")
+            
+            # Connect and execute
+            conn = psycopg2.connect(**self.db_params)
+            cursor = conn.cursor()
+            
+            # Execute the SQL string directly
+            cursor.execute(sql_query)
             
             conn.commit()
             conn.close()
-            print(f"Stored tweet in database: {tweet['state_code']} - {tweet['raw_text']}")
+            logger.db_stored(tweet_id, state_code, dominant_emotion)
             
         except Exception as e:
-            print(f"Failed to store tweet in database: {e}")
+            logger.error("DB_CONSUMER", f"Failed to store tweet {tweet.get('id', 'unknown')}: {e}")
+            logger.error("DB_CONSUMER", f"Tweet data: {tweet}")
 
     def start_consuming(self):
         """Start consuming tweets and storing in database"""
-        print("Database consumer started")
         
         while True:
             try:
@@ -175,24 +221,21 @@ class DatabaseConsumer:
 
                 for message in self.consumer:
                     tweet = message.value
+                    logger.kafka_received(tweet['id'], tweet['state_code'])
                     self.store_tweet(tweet)
                     
             except KeyboardInterrupt:
-                print("\nDatabase consumer stopped")
                 break
             except Exception as e:
-                print(f"Error in database consumer: {e}")
-                self.consumer = None  # Reset consumer to trigger reconnection
+                self.consumer = None
                 time.sleep(5)
 
     def close(self):
         """Close Kafka consumer"""
         if self.consumer:
             self.consumer.close()
-            print("Kafka consumer closed")
 
 def signal_handler(signum, frame):
-    print("\nReceived signal to stop")
     sys.exit(0)
 
 if __name__ == "__main__":

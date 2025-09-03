@@ -1,0 +1,215 @@
+.emotion-visualization {
+  padding: 20px;
+  background: #f8f9fa;
+  min-height: 100vh;
+  color: #333333;
+  font-family: 'Arial', sans-serif;
+}
+
+.emotion-visualization .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #444;
+}
+
+.emotion-visualization h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 2rem;
+  font-weight: 600;
+  background: linear-gradient(45deg, #ffffff, #cccccc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.refresh-btn {
+  background: linear-gradient(45deg, #333, #555);
+  color: white;
+  border: 1px solid #666;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.refresh-btn:hover {
+  background: linear-gradient(45deg, #444, #666);
+  border-color: #777;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.last-updated {
+  font-size: 0.9rem;
+  color: #cccccc;
+  font-style: italic;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid #333;
+  border-top: 3px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading p {
+  color: #cccccc;
+  font-size: 1.1rem;
+}
+
+.error-message {
+  background: linear-gradient(45deg, #441111, #662222);
+  border: 1px solid #cc4444;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-message p {
+  margin: 0;
+  color: #ffcccc;
+}
+
+.error-message button {
+  background: #cc4444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.error-message button:hover {
+  background: #dd5555;
+}
+
+.visualization-container {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.chart-section {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 30px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
+.chart-section h3 {
+  margin: 0 0 10px 0;
+  color: #ffffff;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.chart-section p {
+  margin: 0 0 20px 0;
+  color: #cccccc;
+  font-size: 1rem;
+}
+
+.dot-plot-chart,
+.time-series-chart {
+  width: 100%;
+  overflow-x: auto;
+  padding: 20px 0;
+}
+
+/* D3.js specific styles */
+.dot-plot-chart .x-axis text,
+.dot-plot-chart .y-axis text,
+.time-series-chart .x-axis text,
+.time-series-chart .y-axis text {
+  fill: #cccccc !important;
+  font-family: 'Inter', sans-serif;
+}
+
+.dot-plot-chart .x-axis line,
+.dot-plot-chart .y-axis line,
+.dot-plot-chart .x-axis path,
+.dot-plot-chart .y-axis path,
+.time-series-chart .x-axis line,
+.time-series-chart .y-axis line,
+.time-series-chart .x-axis path,
+.time-series-chart .y-axis path {
+  stroke: #666 !important;
+}
+
+.dot-plot-chart .legend text,
+.time-series-chart .legend text {
+  fill: #cccccc !important;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Tooltip styles */
+.tooltip {
+  background: rgba(0, 0, 0, 0.9) !important;
+  color: white !important;
+  padding: 12px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .emotion-visualization {
+    padding: 15px;
+  }
+  
+  .emotion-visualization .header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  
+  .controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .chart-section {
+    padding: 20px;
+  }
+  
+  .dot-plot-chart svg,
+  .time-series-chart svg {
+    width: 100%;
+    height: auto;
+  }
+}

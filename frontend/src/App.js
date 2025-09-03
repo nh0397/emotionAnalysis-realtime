@@ -4,6 +4,7 @@ import Navigation from './components/Navigation';
 import TweetDashboard from './components/TweetDashboard';
 import HistoricalTweets from './components/HistoricalTweets';
 import Analytics from './components/Analytics';
+import EmotionVisualization from './components/EmotionVisualization';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('live');
@@ -114,6 +115,8 @@ function App() {
         return <HistoricalTweets />;
       case 'metrics':
         return <Analytics />;
+      case 'visualization':
+        return <EmotionVisualization />;
       default:
         return <div>Page not found</div>;
     }

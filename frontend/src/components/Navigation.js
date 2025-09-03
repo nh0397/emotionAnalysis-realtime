@@ -5,7 +5,8 @@ function Navigation({ currentPage, onPageChange }) {
   const pages = [
     { id: 'live', name: 'Live Stream', description: 'Real-time tweets' },
     { id: 'history', name: 'History', description: 'All tweets from database' },
-    { id: 'metrics', name: 'Analytics', description: 'System metrics' }
+    { id: 'metrics', name: 'Analytics', description: 'System metrics' },
+    { id: 'visualization', name: 'Emotion Map', description: 'Interactive D3.js visualizations' }
   ];
 
   return (

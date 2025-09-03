@@ -37,14 +37,14 @@ Final Project/
 ├── backend/                     # Python backend services
 │   ├── src/
 │   │   ├── simple_tweet_agent.py    # Ollama-powered tweet generation
-│   │   ├── db_writer.py             # PostgreSQL integration
+│   │   ├── db_consumer.py           # PostgreSQL integration
 │   │   ├── api_server.py            # Flask SSE server
-│   │   ├── system_logger.py         # Structured logging
+│   │   ├── unified_logger.py        # Single unified logging system
+│   │   ├── test_nlp_performance.py  # NLP performance testing
 │   │   └── nlp_pipeline/            # Custom PyTorch emotion analysis
 │   │       ├── emotion_analyzer.py      # Main analyzer class
 │   │       ├── text_preprocessor.py     # Text cleaning
-│   │       ├── emotion_mapper.py        # 10-emotion mapping
-│   │       └── test_emotion_pipeline.py # Testing suite
+│   │       └── emotion_mapper.py        # 10-emotion mapping
 │   ├── requirements.txt
 │   └── realtime/                    # Python virtual environment
 ├── docker-compose.yml              # PostgreSQL, Kafka, Zookeeper
@@ -111,8 +111,8 @@ docker-compose up -d
 cd backend/src
 python simple_tweet_agent.py
 
-# Start database writer
-python db_writer.py
+# Start database consumer
+python db_consumer.py
 
 # Start API server
 python api_server.py
@@ -352,9 +352,7 @@ npm test
 ## Monitoring and Logging
 
 ### Log Files
-- `backend/src/logs/tweet_generation.log`: Tweet agent activity
-- `backend/src/logs/database.log`: Database operations
-- `backend/src/logs/api_server.log`: API server requests
+- `backend/src/logs/system.log`: Unified system logs for all components
 
 ### System Health
 - Health check endpoint: `/health`
@@ -383,7 +381,7 @@ source backend/realtime/bin/activate
 pip list
 
 # Test database connection
-python backend/src/db_writer.py
+python backend/src/db_consumer.py
 ```
 
 ## License

@@ -12,7 +12,7 @@ import json
 import time
 import psycopg2
 from datetime import datetime, timedelta
-from system_logger import ui_logger as logger
+from unified_logger import logger
 
 app = Flask(__name__)
 CORS(app)
@@ -31,7 +31,7 @@ def get_db_connection():
     try:
         return psycopg2.connect(**DB_PARAMS)
     except Exception as e:
-        logger.error(f"Database connection failed: {e}")
+        logger.error("API_SERVER", f"Database connection failed: {e}")
         return None
 
 def get_kafka_consumer():
@@ -46,7 +46,7 @@ def get_kafka_consumer():
         )
         return consumer
     except Exception as e:
-        logger.error(f"Kafka connection failed: {e}")
+        logger.error("API_SERVER", f"Kafka connection failed: {e}")
         return None
 
 def format_sse(data: dict, event=None) -> str:
@@ -68,7 +68,11 @@ def root():
             "historical": "/tweets/history", 
             "states": "/tweets/states",
             "metrics": "/tweets/metrics",
-            "health": "/health"
+            "health": "/health",
+            "visualization": {
+                "dot-plot-data": "/data",
+                "time-series-data": "/timeSeriesData"
+            }
         }
     })
 
@@ -108,11 +112,11 @@ def stream_tweets():
                 
                 for message in consumer:
                     tweet = message.value
-                    logger.ui_streamed(tweet.get('id', 'unknown'))
+                    logger.system_event("UI_STREAMED", f"Tweet ID: {tweet.get('id', 'unknown')}")
                     yield format_sse(tweet, "tweet")
 
             except Exception as e:
-                logger.error(f"Stream error: {e}")
+                logger.error("API_SERVER", f"Stream error: {e}")
                 yield format_sse({"error": str(e)}, "error")
                 if consumer:
                     consumer.close()
@@ -200,7 +204,7 @@ def get_tweet_history():
         })
         
     except Exception as e:
-        logger.error(f"Failed to get tweet history: {e}")
+        logger.error("API_SERVER", f"Failed to get tweet history: {e}")
         return jsonify({"error": "Database query failed"}), 500
 
 @app.route('/tweets/states')
@@ -231,7 +235,7 @@ def get_unique_states():
         })
         
     except Exception as e:
-        logger.error(f"Failed to get unique states: {e}")
+        logger.error("API_SERVER", f"Failed to get unique states: {e}")
         return jsonify({"error": "Database query failed"}), 500
 
 @app.route('/tweets/metrics')
@@ -303,8 +307,165 @@ def get_metrics():
         })
         
     except Exception as e:
-        logger.error(f"Failed to get metrics: {e}")
+        logger.error("API_SERVER", f"Failed to get metrics: {e}")
         return jsonify({"error": "Metrics query failed"}), 500
+
+@app.route('/data')
+def get_dot_plot_data():
+    """Get aggregated emotion data by state for dot plot visualization"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Aggregate emotion data by state (exactly like sample.csv format)
+        cursor.execute("""
+            SELECT 
+                state_code as state,
+                COUNT(*) as total_tweets,
+                AVG(anger) as anger,
+                AVG(fear) as fear,
+                AVG(positive) as positive,
+                AVG(sadness) as sadness,
+                AVG(surprise) as surprise,
+                AVG(joy) as joy,
+                AVG(anticipation) as anticipation,
+                AVG(trust) as trust,
+                AVG(negative) as negative,
+                AVG(disgust) as disgust,
+                COUNT(CASE WHEN anger > 0 THEN 1 END) as anger_count,
+                COUNT(CASE WHEN fear > 0 THEN 1 END) as fear_count,
+                COUNT(CASE WHEN positive > 0 THEN 1 END) as positive_count,
+                COUNT(CASE WHEN sadness > 0 THEN 1 END) as sadness_count,
+                COUNT(CASE WHEN surprise > 0 THEN 1 END) as surprise_count,
+                COUNT(CASE WHEN joy > 0 THEN 1 END) as joy_count,
+                COUNT(CASE WHEN anticipation > 0 THEN 1 END) as anticipation_count,
+                COUNT(CASE WHEN trust > 0 THEN 1 END) as trust_count,
+                COUNT(CASE WHEN negative > 0 THEN 1 END) as negative_count,
+                COUNT(CASE WHEN disgust > 0 THEN 1 END) as disgust_count,
+                SUM(anger) as anger_sum,
+                SUM(anticipation) as anticipation_sum,
+                SUM(disgust) as disgust_sum,
+                SUM(fear) as fear_sum,
+                SUM(joy) as joy_sum,
+                SUM(negative) as negative_sum,
+                SUM(positive) as positive_sum,
+                SUM(sadness) as sadness_sum,
+                COUNT(CASE WHEN compound < -0.05 THEN 1 END) as senti_negative_count,
+                COUNT(CASE WHEN compound >= -0.05 AND compound <= 0.05 THEN 1 END) as senti_neutral_count,
+                COUNT(CASE WHEN compound > 0.05 THEN 1 END) as senti_positive_count,
+                SUM(surprise) as surprise_sum,
+                SUM(trust) as trust_sum
+            FROM tweets 
+            WHERE state_code IS NOT NULL
+            GROUP BY state_code
+            ORDER BY state_code
+        """)
+        
+        states_data = []
+        for i, row in enumerate(cursor.fetchall()):
+            states_data.append({
+                "": i,  # Index column like in CSV
+                "state": row[0],
+                "anger": round(row[2] or 0.0, 17),  # High precision like CSV
+                "fear": round(row[3] or 0.0, 17),
+                "positive": round(row[4] or 0.0, 17),
+                "sadness": round(row[5] or 0.0, 17),
+                "surprise": round(row[6] or 0.0, 17),
+                "joy": round(row[7] or 0.0, 17),
+                "anticipation": round(row[8] or 0.0, 17),
+                "trust": round(row[9] or 0.0, 17),
+                "negative": round(row[10] or 0.0, 17),
+                "disgust": round(row[11] or 0.0, 17),
+                "anger_count": row[12] or 0,
+                "fear_count": row[13] or 0,
+                "positive_count": row[14] or 0,
+                "sadness_count": row[15] or 0,
+                "surprise_count": row[16] or 0,
+                "joy_count": row[17] or 0,
+                "anticipation_count": row[18] or 0,
+                "trust_count": row[19] or 0,
+                "negative_count": row[20] or 0,
+                "disgust_count": row[21] or 0,
+                "anger_sum": round(row[22] or 0.0, 15),
+                "anticipation_sum": round(row[23] or 0.0, 14),
+                "disgust_sum": round(row[24] or 0.0, 15),
+                "fear_sum": round(row[25] or 0.0, 15),
+                "joy_sum": round(row[26] or 0.0, 14),
+                "negative_sum": round(row[27] or 0.0, 13),
+                "positive_sum": round(row[28] or 0.0, 14),
+                "sadness_sum": round(row[29] or 0.0, 15),
+                "senti_negative_count": float(row[30] or 0),
+                "senti_neutral_count": float(row[31] or 0),
+                "senti_positive_count": float(row[32] or 0),
+                "surprise_sum": round(row[33] or 0.0, 14),
+                "trust_sum": round(row[34] or 0.0, 14)
+            })
+        
+        conn.close()
+        
+        # Return array directly like the original expects
+        return jsonify(states_data)
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to get dot plot data: {e}")
+        return jsonify({"error": "Visualization query failed"}), 500
+
+@app.route('/timeSeriesData')
+def get_time_series_data():
+    """Get time series emotion data for all states (like new_dummy_emotion_data.csv)"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Get time series data (by day) for all states, exactly like CSV format
+        cursor.execute("""
+            SELECT 
+                state_code as state,
+                DATE(created_at) as date,
+                AVG(anger) as anger,
+                AVG(fear) as fear,
+                AVG(sadness) as sadness,
+                AVG(surprise) as surprise,
+                AVG(joy) as joy,
+                AVG(anticipation) as anticipation,
+                AVG(trust) as trust,
+                AVG(disgust) as disgust
+            FROM tweets 
+            WHERE state_code IS NOT NULL
+            GROUP BY state_code, DATE(created_at)
+            ORDER BY state_code, DATE(created_at) DESC
+            LIMIT 1000
+        """)
+        
+        time_series_data = []
+        for row in cursor.fetchall():
+            time_series_data.append({
+                "state": row[0],
+                "date": row[1].strftime('%Y-%m-%d') if row[1] else None,
+                "anger": round(row[2] or 0.0, 17),  # High precision like CSV
+                "fear": round(row[3] or 0.0, 16),
+                "sadness": round(row[4] or 0.0, 16),
+                "surprise": round(row[5] or 0.0, 17),
+                "joy": round(row[6] or 0.0, 17),
+                "anticipation": round(row[7] or 0.0, 16),
+                "trust": round(row[8] or 0.0, 16),
+                "disgust": round(row[9] or 0.0, 18)
+            })
+        
+        conn.close()
+        
+        # Return array directly like the original expects
+        return jsonify(time_series_data)
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to get time series data: {e}")
+        return jsonify({"error": "Time series query failed"}), 500
 
 if __name__ == "__main__":
     logger.system_event("API_SERVER_STARTING", "Port 9000")

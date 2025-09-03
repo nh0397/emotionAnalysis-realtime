@@ -13,7 +13,7 @@ from typing import Dict, Any
 from ollama import chat, ChatResponse
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
-from system_logger import tweet_logger as logger
+from unified_logger import logger
 from nlp_pipeline import CustomEmotionAnalyzer
 
 
@@ -126,19 +126,25 @@ class TweetGenerator:
             emotion_results = self.emotion_analyzer.analyze_emotion(tweet_text)
             nlp_time = time.time() - nlp_start_time
             
+            # DEBUG: Log the actual emotion values being generated
+            logger.system_event("NLP_EMOTION_DEBUG", 
+                f"Tweet {self.tweet_id_counter}: anger={emotion_results.get('anger', 0)}, joy={emotion_results.get('joy', 0)}, positive={emotion_results.get('positive', 0)}, dominant={emotion_results.get('dominant_emotion', 'unknown')}")
+            
             # Log NLP processing time
             logger.system_event("NLP_PROCESSED", f"Tweet {self.tweet_id_counter}: {nlp_time:.3f}s")
             
         except Exception as e:
             nlp_time = time.time() - nlp_start_time
-            logger.error(f"NLP processing failed for tweet {self.tweet_id_counter}: {e}")
+            logger.error("TWEET_GENERATOR", f"NLP processing failed for tweet {self.tweet_id_counter}: {e}")
             # Fallback emotion values
             emotion_results = {
-                'anger': 0.0, 'fear': 0.0, 'positive': 0.5, 'sadness': 0.0,
-                'surprise': 0.0, 'joy': 0.5, 'anticipation': 0.0, 'trust': 0.0,
-                'negative': 0.0, 'disgust': 0.0, 'dominant_emotion': 'positive',
-                'confidence': 0.5, 'compound': 0.0
+                'anger': 0.1, 'fear': 0.1, 'positive': 0.5, 'sadness': 0.1,
+                'surprise': 0.1, 'joy': 0.3, 'anticipation': 0.1, 'trust': 0.2,
+                'negative': 0.1, 'disgust': 0.05, 'dominant_emotion': 'positive',
+                'confidence': 0.5, 'compound': 0.2
             }
+            logger.system_event("NLP_FALLBACK_DEBUG", f"Tweet {self.tweet_id_counter}: Using fallback emotions")
+        
         
         # Create tweet object with NLP results
         tweet = {
@@ -154,33 +160,21 @@ class TweetGenerator:
             "replies": random.randint(0, 50),
             "views": random.randint(500, 5000),
             # Add emotion analysis results
-            **emotion_results,
-            # Add performance metrics
-            "processing_times": {
-                "generation_ms": round(generation_time * 1000, 1),
-                "nlp_ms": round(nlp_time * 1000, 1),
-                "total_ms": round((time.time() - total_start_time) * 1000, 1)
-            }
+            **emotion_results
         }
         
-        # Log tweet generation with timing
-        total_time = time.time() - total_start_time
-        logger.tweet_generated(
-            tweet['id'], 
-            tweet['context'], 
-            tweet['state_code'], 
-            f"{tweet['raw_text'][:50]}... | Gen: {generation_time:.2f}s, NLP: {nlp_time:.3f}s, Total: {total_time:.3f}s"
-        )
+        # Log tweet generation
+        logger.tweet_generated(tweet['id'], tweet['context'], tweet['state_code'], tweet['raw_text'][:50])
         
         # Send to Kafka
         try:
             future = self.producer.send(self.topic, value=tweet)
             record_metadata = future.get(timeout=10)
-            logger.kafka_sent(tweet['id'], self.topic, record_metadata.partition, record_metadata.offset)
+            logger.kafka_sent(tweet['id'], self.topic)
             self.tweet_id_counter += 1
             return True
         except KafkaError as e:
-            logger.kafka_failed(tweet['id'], str(e))
+            logger.error("TWEET_GENERATOR", f"Kafka failed for tweet {tweet['id']}: {e}")
             return False
 
     def close(self):
@@ -189,19 +183,148 @@ class TweetGenerator:
             self.producer.close()
             logger.system_event("KAFKA_PRODUCER_CLOSED")
 
-def main():
-    generator = TweetGenerator()
-    logger.system_event("TWEET_GENERATOR_STARTED", f"Keywords: {len(generator.keywords)}")
+def console_demo():
+    """Console demo mode - shows NLP results without Kafka"""
+    print("🚀 TecViz Tweet Generator with NLP Pipeline")
+    print("📊 Console Demo Mode - No Kafka/DB")
+    print("=" * 60)
+    
+    # Initialize just the NLP components (no Kafka)
+    print("🧠 Loading NLP models...")
+    start_time = time.time()
+    
+    try:
+        emotion_analyzer = CustomEmotionAnalyzer()
+        load_time = time.time() - start_time
+        print(f"✅ NLP models loaded in {load_time:.2f}s")
+    except Exception as e:
+        print(f"❌ Failed to load NLP models: {e}")
+        return
+    
+    # Tweet generation components
+    keywords = [
+        "AI ethics", "remote work culture", "tech layoffs", "startup funding",
+        "ChatGPT updates", "coding practices", "tech interviews", "developer burnout"
+    ]
+    
+    states = {
+        'CA': 'California', 'NY': 'New York', 'TX': 'Texas', 'FL': 'Florida',
+        'WA': 'Washington', 'MA': 'Massachusetts', 'IL': 'Illinois', 'PA': 'Pennsylvania'
+    }
+    
+    tweet_counter = 1
+    
+    print(f"\n🎯 Starting tweet generation (Ctrl+C to stop)")
+    print("-" * 60)
     
     try:
         while True:
-            generator.generate_and_send_tweet()
+            # Pick random keyword and state
+            keyword = random.choice(keywords)
+            state_code = random.choice(list(states.keys()))
+            state_name = states[state_code]
+            
+            print(f"\n📝 Tweet #{tweet_counter}")
+            print(f"🏷️  Keyword: {keyword}")
+            print(f"📍 Location: {state_name} ({state_code})")
+            
+            # Generate tweet text
+            gen_start = time.time()
+            try:
+                prompt = f"""Generate a tweet about {keyword}.
+                - Be expressive and authentic
+                - Max 280 characters
+                - Include hashtags
+                - Be tech-focused
+                - End with ({state_code})
+                """
+                
+                response: ChatResponse = chat(
+                    model='llama3.2:3b',
+                    messages=[{'role': 'user', 'content': prompt}]
+                )
+                
+                tweet_text = response["message"]["content"].strip()
+                if f"({state_code})" not in tweet_text:
+                    tweet_text = tweet_text.rstrip() + f" ({state_code})"
+                    
+            except Exception as e:
+                tweet_text = f"Thoughts on {keyword}... 🤔 ({state_code})"
+                print(f"⚠️  Ollama error: {e}")
+                
+            gen_time = time.time() - gen_start
+            
+            print(f"📄 Generated Text: {tweet_text}")
+            print(f"⏱️  Generation Time: {gen_time:.2f}s")
+            
+            # Analyze emotions
+            nlp_start = time.time()
+            try:
+                emotions = emotion_analyzer.analyze_emotion(tweet_text)
+                nlp_time = time.time() - nlp_start
+                
+                print(f"🧠 NLP Analysis Time: {nlp_time:.3f}s")
+                print(f"🎭 Dominant Emotion: {emotions['dominant_emotion']} (confidence: {emotions['confidence']:.3f})")
+                
+                # Display all emotions with visual bars
+                print("📊 All Emotion Scores:")
+                emotion_names = ['anger', 'fear', 'positive', 'sadness', 'surprise', 
+                               'joy', 'anticipation', 'trust', 'negative', 'disgust']
+                
+                for emotion in emotion_names:
+                    score = emotions.get(emotion, 0.0)
+                    bar = "█" * int(score * 20)  # Visual bar
+                    print(f"   {emotion:12}: {score:.3f} {bar}")
+                
+                # Sentiment summary
+                compound = emotions.get('compound', 0.0)
+                if compound >= 0.05:
+                    sentiment = "Positive 😊"
+                elif compound <= -0.05:
+                    sentiment = "Negative 😔"
+                else:
+                    sentiment = "Neutral 😐"
+                    
+                print(f"💭 Overall Sentiment: {sentiment} ({compound:.3f})")
+                
+            except Exception as e:
+                nlp_time = time.time() - nlp_start
+                print(f"❌ NLP analysis failed: {e}")
+            
+            total_time = gen_time + nlp_time
+            print(f"⚡ Total Processing: {total_time:.3f}s")
+            print("-" * 60)
+            
+            tweet_counter += 1
+            
+            # Wait before next tweet
+            print(f"⏳ Waiting 10 seconds for next tweet...\n")
             time.sleep(10)
             
     except KeyboardInterrupt:
-        logger.system_event("TWEET_GENERATOR_STOPPED")
-    finally:
-        generator.close()
+        print(f"\n🛑 Demo stopped by user")
+        print(f"📈 Generated {tweet_counter - 1} tweets with full NLP analysis")
+
+def main():
+    """Main function with mode selection"""
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "--demo":
+        console_demo()
+    else:
+        # Original Kafka mode
+        generator = TweetGenerator()
+        logger.system_event("TWEET_GENERATOR_STARTED", f"Keywords: {len(generator.keywords)}")
+        
+        try:
+            while True:
+                generator.generate_and_send_tweet()
+                time.sleep(10)
+                
+        except KeyboardInterrupt:
+            logger.system_event("TWEET_GENERATOR_STOPPED")
+        finally:
+            generator.close()
 
 if __name__ == "__main__":
     main()
