@@ -1,203 +1,148 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
-import EmotionCircles from './EmotionCircles';
-import StateLines from './StateLines';
-import ColorLegend from './Legend';
-import TwoWaySlider from './TwoWaySlider';
-import StateFilter from './StateFilter';
-import DataOrderFilter from './DataOrderFilter';
-import EmotionTornadoChart from '../views/EmotionTornadoChart';
 import TimeSeriesChart from './TimeSeriesChart';
-import Xaxis from './Xaxis';
-import Yaxis from './Yaxis';
 
 const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
-  // ALL HOOKS MUST BE AT THE TOP - NO EARLY RETURNS BEFORE THIS
-  const svgRef = useRef(null);
   const containerRef = useRef(null);
-  const [hoveredValue, setHoveredValue] = useState(null);
-  const [range, setRange] = useState([0, 1]);
-  const [tempRange, setTempRange] = useState([0, 1]);
-  const [filteredStates, setFilteredStates] = useState([]);
-  const [orderOption, setOrderOption] = useState(null);
+  const svgRef = useRef(null);
+  
+  // State management
   const [selectedLines, setSelectedLines] = useState([]);
+  const [hoveredValue, setHoveredValue] = useState(null);
   const [selectedState, setSelectedState] = useState("");
-  const [filteredDataTimeSeries, setFilteredDataTimeSeries] = useState("");
+  const [filteredStates, setFilteredStates] = useState([]);
+  const [emotionRange, setEmotionRange] = useState([0, 1]);
+  const [orderByEmotion, setOrderByEmotion] = useState("");
+  const [selectedEmotions, setSelectedEmotions] = useState([]);
 
-  const emotions = ['anger', 'fear', 'positive', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'negative', 'disgust'];
+  // Chart dimensions - start from extreme left, minimal margins
+  const isMobile = window.innerWidth < 768;
+  const margin = { 
+    top: 100, 
+    right: isMobile ? 300 : 320, 
+    bottom: 100, 
+    left: 0 
+  };
+  const width = dimensions.width - margin.left - margin.right;
+  const height = dimensions.height - margin.top - margin.bottom;
+  const svgWidth = dimensions.width;
+  const svgHeight = dimensions.height;
 
-  // Memoized values
-  const { width, height, margin } = dimensions;
-  const svgWidth = width + margin.left + margin.right;
-  const svgHeight = height + margin.top + margin.bottom;
-  const middleX = svgWidth / 2 - 500;
-  const middleY = svgHeight - dimensions.height;
+  // Extract unique states and emotions
+  const allStates = [...new Set(data.map(d => d.state))].sort();
+  const emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative'];
 
-  // Memoized data processing
+  // Color scale
+  const colorScale = d3.scaleOrdinal()
+    .domain(emotions)
+    .range(['#FF0000', '#FFA500', '#008000', '#0000FF', '#FFC0CB', '#FFD700', '#9400D3', '#00FFFF', '#A9A9A9', '#808000']);
+
+  // Process and filter data
   const processedData = useMemo(() => {
-    if (!data || data.length === 0) return [];
-
-    let processed = [...data];
+    let filtered = data;
     
-    // Filter by states
+    // Apply state filter
     if (filteredStates.length > 0) {
-      processed = processed.filter((obj) => filteredStates.includes(obj.state));
+      filtered = filtered.filter(d => filteredStates.includes(d.state));
     }
-
-    // Order data
-    if (orderOption) {
-      processed.sort((a, b) =>
-        d3.ascending(
-          parseFloat(a[orderOption.value]),
-          parseFloat(b[orderOption.value])
-        )
-      );
-    } else {
-      processed.sort((a, b) => a.state.localeCompare(b.state));
-    }
-
-    // Filter by emotion range
-    if (range[0] !== 0 || range[1] !== 1) {
-      processed = processed.map((obj) => {
-        const filteredObj = {};
-        for (const [key, value] of Object.entries(obj)) {
-          if (key === "state") {
-            filteredObj[key] = value;
-          } else if (emotions.includes(key)) {
-            const val = parseFloat(value);
-            if (val >= range[0] && val <= range[1]) {
-              filteredObj[key] = value;
+    
+    // Apply emotion filter
+    if (selectedEmotions.length > 0) {
+      filtered = filtered.map(d => {
+        const filteredEmotions = {};
+        emotions.forEach(emotion => {
+          if (selectedEmotions.includes(emotion)) {
+            const value = d[emotion] || 0;
+            if (value >= emotionRange[0] && value <= emotionRange[1]) {
+              filteredEmotions[emotion] = value;
+            } else {
+              filteredEmotions[emotion] = 0;
             }
+          } else {
+            filteredEmotions[emotion] = 0;
           }
-        }
-        return filteredObj;
+        });
+        return { ...d, ...filteredEmotions };
+      });
+    } else {
+      // Apply emotion range filter when no specific emotions selected
+      filtered = filtered.map(d => {
+        const filteredEmotions = {};
+        emotions.forEach(emotion => {
+          const value = d[emotion] || 0;
+          if (value >= emotionRange[0] && value <= emotionRange[1]) {
+            filteredEmotions[emotion] = value;
+          } else {
+            filteredEmotions[emotion] = 0;
+          }
+        });
+        return { ...d, ...filteredEmotions };
       });
     }
+    
+    // Apply ordering
+    if (orderByEmotion) {
+      filtered.sort((a, b) => (b[orderByEmotion] || 0) - (a[orderByEmotion] || 0));
+    }
+    
+    return filtered;
+  }, [data, filteredStates, emotionRange, orderByEmotion, selectedEmotions]);
 
-    return processed;
-  }, [data, filteredStates, orderOption, range]);
-
-  // Memoized filtered data for hover effects
-  const hoveredData = useMemo(() => {
-    if (!hoveredValue || !processedData.length) return processedData;
-
-    return processedData.map((obj) => {
-      const filteredObj = {};
-      for (const [key, value] of Object.entries(obj)) {
-        if (key === "state" || key === hoveredValue.emotion) {
-          filteredObj[key] = value;
-        }
-      }
-      return filteredObj;
-    });
-  }, [processedData, hoveredValue]);
-
-  // Memoized scales
+  // Scales
   const scales = useMemo(() => {
+    if (!processedData || processedData.length === 0 || !width || !height) {
+      return null;
+    }
+
     const xScale = d3.scaleLinear()
       .domain([0, 1])
-      .range([0, width])
-      .nice();
+      .range([0, width]);
 
     const yScale = d3.scaleBand()
+      .domain(processedData.map(d => d.state))
       .range([0, height])
-      .domain(processedData.map((d) => d.state))
-      .padding(1);
-
-    const colorScale = d3.scaleOrdinal()
-      .domain(emotions)
-      .range(['#FF0000', '#FFA500', '#008000', '#0000FF', '#FFC0CB', '#FFD700', '#9400D3', '#00FFFF', '#A9A9A9', '#808000']);
+      .padding(0.1);
 
     return { xScale, yScale, colorScale };
   }, [processedData, width, height]);
 
-  // Memoized order options
-  const orderOptions = useMemo(() => {
-    return colorObjects.map((emotionColor) => ({
-      value: emotionColor.emotion,
-      label: emotionColor.emotion,
-      color: emotionColor.color,
-    }));
-  }, [colorObjects]);
-
-  // Memoized unique states
-  const allStates = useMemo(() => {
-    return data ? [...new Set(data.map(d => d.state))].sort() : [];
-  }, [data]);
-
   // Event handlers
-  const handleStateFilter = useCallback((selectedStates) => {
-    setFilteredStates(Array.from(selectedStates));
-  }, []);
-
-  const handleOrderChange = useCallback((selectedOption) => {
-    setOrderOption(selectedOption);
-  }, []);
-
-  const handleRangeChange = useCallback((newRange) => {
-    setRange(newRange);
-  }, []);
-
-  const handleSliderChange = useCallback((index, value) => {
-    if (index === 0) {
-      setTempRange((prev) => [value, prev[1]]);
-    } else {
-      setTempRange((prev) => [prev[0], value]);
-    }
-  }, []);
-
-  const handleSliderEnd = useCallback((index, value) => {
-    if (index === 0) {
-      setRange((prev) => [value, prev[1]]);
-      setTempRange((prev) => [value, prev[1]]);
-    } else {
-      setRange((prev) => [prev[0], value]);
-      setTempRange((prev) => [prev[0], value]);
-    }
-  }, []);
-
-  const onStateSelection = useCallback((selectedData) => {
-    const selectedOptions = Array.from(selectedData);
-    setFilteredStates(selectedOptions);
-  }, []);
-
-  const onDataOrderSelection = useCallback((selectedData) => {
-    setOrderOption(selectedData);
+  const handleLineClick = useCallback((state) => {
+    setSelectedLines(prev => 
+      prev.includes(state) 
+        ? prev.filter(s => s !== state)
+        : [...prev, state].slice(-2)
+    );
   }, []);
 
   const handleTickClick = useCallback((state) => {
-    console.log("tick clicked", state);
     setSelectedState(state);
-    const filteredData = timeSeriesData.filter((d) => d.state === state);
-    setFilteredDataTimeSeries(filteredData);
-  }, [timeSeriesData]);
+  }, []);
+
+  const handleStateFilter = useCallback((states) => {
+    setFilteredStates(states);
+  }, []);
+
+  const handleEmotionToggle = useCallback((emotion) => {
+    setSelectedEmotions(prev => 
+      prev.includes(emotion)
+        ? prev.filter(e => e !== emotion)
+        : [...prev, emotion]
+    );
+  }, []);
 
   const resetFilters = useCallback(() => {
     setFilteredStates([]);
-    setOrderOption(null);
-    setRange([0, 1]);
-    setTempRange([0, 1]);
-    setHoveredValue(null);
+    setEmotionRange([0, 1]);
+    setOrderByEmotion("");
     setSelectedLines([]);
-  }, []);
-
-  // Click outside handler
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setSelectedLines([]);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    setHoveredValue(null);
+    setSelectedEmotions([]);
   }, []);
 
   // Main rendering effect
   useEffect(() => {
-    if (!svgRef.current || !processedData.length) return;
+    if (!svgRef.current || !processedData || processedData.length === 0 || !scales) return;
     
     renderChart();
   }, [processedData, hoveredValue, selectedLines, scales]);
@@ -211,179 +156,190 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
 
   // D3 chart rendering function
   const renderChart = useCallback(() => {
+    if (!svgRef.current || !processedData || processedData.length === 0) {
+      console.log("Cannot render chart: missing data or ref");
+      return;
+    }
+
     const container = d3.select(svgRef.current);
+    if (container.empty()) {
+      console.log("Cannot render chart: container is empty");
+      return;
+    }
+    
     container.selectAll("*").remove();
 
     const svg = container.append("svg")
-      .attr("width", svgWidth)
-      .attr("height", svgHeight);
+      .attr("width", "100%")
+      .attr("height", "100%")
+      .attr("viewBox", `0 0 ${svgWidth} ${svgHeight}`)
+      .attr("preserveAspectRatio", "xMidYMid meet");
 
     const g = svg.append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const { xScale, yScale, colorScale } = scales;
-
     // Add axes
-    g.append("g")
-      .attr("class", "x-axis")
-      .attr("transform", `translate(0,${height})`)
-      .call(d3.axisBottom(xScale))
-      .selectAll("text")
-      .style("font-size", "12px")
-      .style("fill", "#333");
+    if (scales && scales.xScale && scales.yScale) {
+      g.append("g")
+        .attr("class", "x-axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(scales.xScale))
+        .selectAll("text")
+        .style("font-size", "12px")
+        .style("font-weight", "500")
+        .style("fill", "#ffffff");
 
-    g.append("g")
-      .attr("class", "y-axis")
-      .call(d3.axisLeft(yScale))
-      .selectAll("text")
-      .style("text-anchor", "end")
-      .style("font-size", "12px")
-      .style("fill", "#333")
-      .style("cursor", "pointer")
-      .on("click", function(event, d) {
-        handleTickClick(d);
-      });
+      // Make X-axis lines visible
+      g.select(".x-axis")
+        .selectAll("line")
+        .style("stroke", "rgba(255, 255, 255, 0.3)");
+
+      g.select(".x-axis")
+        .select(".domain")
+        .style("stroke", "rgba(255, 255, 255, 0.3)");
+
+      g.append("g")
+        .attr("class", "y-axis")
+        .call(d3.axisLeft(scales.yScale))
+        .selectAll("text")
+        .style("text-anchor", "end")
+        .style("font-size", "12px")
+        .style("font-weight", "500")
+        .style("fill", "#ffffff")
+        .style("cursor", "pointer")
+        .on("click", function(event, d) {
+          handleTickClick(d);
+        });
+
+      // Make Y-axis lines visible
+      g.select(".y-axis")
+        .selectAll("line")
+        .style("stroke", "rgba(255, 255, 255, 0.3)");
+
+      g.select(".y-axis")
+        .select(".domain")
+        .style("stroke", "rgba(255, 255, 255, 0.3)");
+    }
+
+
 
     // Add state lines connecting emotion dots
     processedData.forEach((stateData) => {
-      const stateY = yScale(stateData.state);
+      const stateY = scales.yScale(stateData.state);
       
-      // Get emotion values for this state
+      // Get all emotion values for this state
       const emotionValues = emotions
-        .filter(emotion => stateData[emotion] !== undefined && stateData[emotion] !== null)
         .map(emotion => ({
           emotion,
-          value: parseFloat(stateData[emotion]) || 0,
-          x: xScale(parseFloat(stateData[emotion]) || 0),
-          y: stateY
+          value: stateData[emotion] || 0,
+          x: scales.xScale(stateData[emotion] || 0)
         }))
-        .filter(d => !isNaN(d.value));
-
-      if (emotionValues.length > 1) {
-        const line = d3.line()
-          .x(d => d.x)
-          .y(d => d.y);
-
-        g.append("path")
-          .datum(emotionValues)
-          .attr("class", "state-line")
-          .attr("d", line)
-          .attr("stroke", selectedLines.includes(stateData.state) ? "#007bff" : "#ddd")
-          .attr("stroke-width", selectedLines.includes(stateData.state) ? 2 : 1)
-          .attr("fill", "none")
-          .style("cursor", "pointer")
-          .on("click", () => {
-            if (selectedLines.length < 2) {
-              setSelectedLines(prev => [...prev, stateData.state]);
-            } else {
-              setSelectedLines([stateData.state]);
-            }
-          });
-      }
-    });
-
-    // Add dots for each emotion
-    emotions.forEach((emotion) => {
-      const emotionData = processedData
-        .filter(d => d[emotion] !== undefined && d[emotion] !== null)
-        .map(d => ({
-          state: d.state,
-          value: parseFloat(d[emotion]) || 0,
-          emotion: emotion
-        }));
-
-      g.selectAll(`.dot-${emotion}`)
-        .data(emotionData)
-        .enter()
-        .append("circle")
-        .attr("class", `dot-${emotion}`)
-        .attr("cx", d => xScale(d.value))
-        .attr("cy", d => yScale(d.state))
-        .attr("r", 4)
-        .style("fill", colorScale(emotion))
-        .style("opacity", hoveredValue && hoveredValue.emotion !== emotion ? 0.3 : 1)
-        .style("stroke", hoveredValue && hoveredValue.emotion === emotion ? "#000" : "none")
-        .style("stroke-width", hoveredValue && hoveredValue.emotion === emotion ? 2 : 0)
-        .style("cursor", "pointer")
-        .on("mouseover", function(event, d) {
-          // Create tooltip
-          const tooltip = d3.select("body")
-            .selectAll(".emotion-tooltip")
-            .data([null])
-            .join("div")
-            .attr("class", "emotion-tooltip")
-            .style("position", "absolute")
-            .style("background", "rgba(0,0,0,0.8)")
-            .style("color", "white")
-            .style("padding", "8px")
-            .style("border-radius", "4px")
-            .style("font-size", "12px")
-            .style("pointer-events", "none")
-            .style("z-index", 1000);
-
-          tooltip
-            .style("opacity", 1)
-            .html(`
-              <strong>${d.state}</strong><br/>
-              ${emotion}: ${d.value.toFixed(3)}
-            `)
-            .style("left", (event.pageX + 10) + "px")
-            .style("top", (event.pageY - 10) + "px");
-        })
-        .on("mouseout", function() {
-          d3.selectAll(".emotion-tooltip").style("opacity", 0);
+        .filter(d => d.value > 0);
+      
+      // Only proceed if we have valid emotion values
+      if (emotionValues && emotionValues.length > 0) {
+        // Draw connecting line between emotion dots for each state
+        if (emotionValues.length > 1) {
+          const line = d3.line()
+            .x(d => d.x)
+            .y(() => stateY + scales.yScale.bandwidth() / 2);
+          
+          g.append("path")
+            .attr("class", "state-line")
+            .attr("d", line(emotionValues))
+            .attr("stroke", selectedLines.includes(stateData.state) ? "#ffffff" : "rgba(255, 255, 255, 0.6)")
+            .attr("stroke-width", selectedLines.includes(stateData.state) ? 3 : 2)
+            .attr("fill", "none")
+            .style("cursor", "pointer")
+            .on("click", () => handleLineClick(stateData.state));
+        }
+        
+        // Add emotion dots
+        emotionValues.forEach(({ emotion, value, x }) => {
+          if (value > 0 && !isNaN(x)) {
+            g.append("circle")
+              .attr("cx", x)
+              .attr("cy", stateY + scales.yScale.bandwidth() / 2)
+              .attr("r", 6)
+              .attr("fill", colorScale(emotion))
+              .attr("stroke", selectedLines.includes(stateData.state) ? "#ffffff" : "rgba(255, 255, 255, 0.8)")
+              .attr("stroke-width", selectedLines.includes(stateData.state) ? 3 : 1)
+              .style("cursor", "pointer")
+              .on("mouseover", function(event) {
+                d3.select(this).attr("r", 8);
+                
+                // Show tooltip
+                const tooltip = d3.select("body").append("div")
+                  .attr("class", "emotion-tooltip")
+                  .style("position", "absolute")
+                  .style("background", "rgba(0, 0, 0, 0.9)")
+                  .style("color", "white")
+                  .style("padding", "8px 12px")
+                  .style("border-radius", "6px")
+                  .style("font-size", "12px")
+                  .style("pointer-events", "none")
+                  .style("z-index", "1000");
+                
+                tooltip.html(`
+                  <strong>${stateData.state}</strong><br/>
+                  ${emotion}: ${value.toFixed(3)}<br/>
+                  <small>Click to select state</small>
+                `);
+                
+                tooltip.style("left", (event.pageX + 10) + "px")
+                       .style("top", (event.pageY - 10) + "px");
+              })
+              .on("mouseout", function() {
+                d3.select(this).attr("r", 6);
+                d3.selectAll(".emotion-tooltip").remove();
+              })
+              .on("click", () => handleLineClick(stateData.state));
+          }
         });
-    });
-
-    // Add legend
-    const legend = g.append("g")
-      .attr("class", "legend")
-      .attr("transform", `translate(${width - 140}, 20)`);
-
-    emotions.forEach((emotion, i) => {
-      const legendRow = legend.append("g")
-        .attr("transform", `translate(0, ${i * 25})`)
-        .style("cursor", "pointer");
-
-      legendRow.append("circle")
-        .attr("r", 6)
-        .style("fill", colorScale(emotion))
-        .style("stroke", hoveredValue && hoveredValue.emotion === emotion ? "#000" : "none")
-        .style("stroke-width", hoveredValue && hoveredValue.emotion === emotion ? 2 : 0)
-        .style("opacity", hoveredValue && hoveredValue.emotion !== emotion ? 0.5 : 1);
-
-      legendRow.append("text")
-        .attr("x", 15)
-        .attr("y", 5)
-        .style("font-size", "13px")
-        .style("fill", "#333")
-        .style("font-weight", hoveredValue && hoveredValue.emotion === emotion ? "bold" : "normal")
-        .text(emotion.charAt(0).toUpperCase() + emotion.slice(1));
-
-      legendRow
-        .on("mouseover", () => setHoveredValue({ emotion }))
-        .on("mouseout", () => setHoveredValue(null));
+      }
     });
 
     // Add axis labels
     g.append("text")
       .attr("x", width / 2)
-      .attr("y", height + 50)
+      .attr("y", height + 60)
       .style("text-anchor", "middle")
       .style("font-size", "14px")
-      .style("fill", "#333")
       .style("font-weight", "bold")
+      .style("fill", "#ffffff")
       .text("Emotion Scores");
 
     g.append("text")
       .attr("transform", "rotate(-90)")
-      .attr("y", -60)
+      .attr("y", -30)
       .attr("x", -height / 2)
       .style("text-anchor", "middle")
       .style("font-size", "14px")
-      .style("fill", "#333")
       .style("font-weight", "bold")
+      .style("fill", "#ffffff")
       .text("States");
+
+    // Add grid lines for better readability
+    g.append("g")
+      .attr("class", "grid")
+      .attr("transform", `translate(0,${height})`)
+      .call(d3.axisBottom(scales.xScale)
+        .tickSize(-height)
+        .tickFormat("")
+      )
+      .selectAll("line")
+      .style("stroke", "rgba(255, 255, 255, 0.1)")
+      .style("stroke-dasharray", "2,2");
+
+    g.append("g")
+      .attr("class", "grid")
+      .call(d3.axisLeft(scales.yScale)
+        .tickSize(-width)
+        .tickFormat("")
+      )
+      .selectAll("line")
+      .style("stroke", "rgba(255, 255, 255, 0.1)")
+      .style("stroke-dasharray", "2,2");
 
     // Add tornado chart if two states are selected
     if (selectedLines.length === 2) {
@@ -391,94 +347,343 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
       const state2Data = processedData.find(d => d.state === selectedLines[1]);
       
       if (state1Data && state2Data) {
-        const tornadoX = width / 2 - 150;
-        const tornadoY = 50;
+        const tornadoData = emotions.map(emotion => ({
+          emotion,
+          state1: state1Data[emotion] || 0,
+          state2: state2Data[emotion] || 0
+        }));
         
-        const tornadoG = g.append("g")
-          .attr("transform", `translate(${tornadoX}, ${tornadoY})`);
+        // Position tornado chart in top-right
+        const tornadoContainer = g.append("g")
+          .attr("transform", `translate(${width - 200}, 20)`);
         
-        tornadoG.append("rect")
-          .attr("x", 0)
-          .attr("y", 0)
-          .attr("width", 300)
-          .attr("height", 200)
-          .style("fill", "rgba(255,255,255,0.9)")
-          .style("stroke", "#333")
-          .style("stroke-width", 1);
+        // Simple tornado chart visualization
+        tornadoData.forEach((d, i) => {
+          const y = i * 20;
+          const maxValue = Math.max(d.state1, d.state2);
+          
+          if (maxValue > 0) {
+            // State 1 bar (left)
+            tornadoContainer.append("rect")
+              .attr("x", -scales.xScale(d.state1))
+              .attr("y", y)
+              .attr("width", scales.xScale(d.state1))
+              .attr("height", 15)
+              .attr("fill", colorScale(d.emotion))
+              .attr("opacity", 0.8);
+            
+            // State 2 bar (right)
+            tornadoContainer.append("rect")
+              .attr("x", 0)
+              .attr("y", y)
+              .attr("width", scales.xScale(d.state2))
+              .attr("height", 15)
+              .attr("opacity", 0.8);
+            
+            // Emotion label
+            tornadoContainer.append("text")
+              .attr("x", -scales.xScale(d.state1) - 10)
+              .attr("y", y + 10)
+              .attr("text-anchor", "end")
+              .style("font-size", "10px")
+              .style("fill", "#ffffff")
+              .text(d.emotion);
+          }
+        });
         
-        tornadoG.append("text")
-          .attr("x", 150)
-          .attr("y", 20)
-          .style("text-anchor", "middle")
-          .style("font-size", "14px")
+        // Add state labels
+        tornadoContainer.append("text")
+          .attr("x", -100)
+          .attr("y", -10)
+          .attr("text-anchor", "middle")
+          .style("font-size", "12px")
           .style("font-weight", "bold")
-          .text(`${state1Data.state} vs ${state2Data.state}`);
+          .style("fill", "#ffffff")
+          .text(state1Data.state);
+        
+        tornadoContainer.append("text")
+          .attr("x", 100)
+          .attr("y", -10)
+          .attr("text-anchor", "middle")
+          .style("font-size", "12px")
+          .style("font-weight", "bold")
+          .style("fill", "#ffffff")
+          .text(state2Data.state);
       }
     }
-  }, [processedData, hoveredValue, selectedLines, scales, svgWidth, svgHeight, margin, width, height, emotions, handleTickClick, setSelectedLines, setHoveredValue]);
-
-  // Early return AFTER all hooks
-  if (!data || data.length === 0) {
-    return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <p>Loading emotion data...</p>
-      </div>
-    );
-  }
+  }, [processedData, hoveredValue, selectedLines, scales, width, height, margin, emotions, colorScale, handleTickClick, handleLineClick]);
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', gap: '20px', minHeight: '800px', width: '100%' }}>
+    <div ref={containerRef} style={{ 
+      width: '100%', 
+      height: 'calc(100vh - 40px)',
+      position: 'relative',
+      background: 'linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%)',
+      padding: '20px'
+    }}>
       
-      {/* Left Column - Graph (75% width) */}
-      <div style={{ flex: '3', display: 'flex', flexDirection: 'column' }}>
-        
-        {/* Main Dot Plot */}
-        {!selectedState && (
-          <div style={{ 
-            background: 'white', 
-            padding: '20px', 
-            borderRadius: '8px', 
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            flex: '1',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            {/* Chart Container */}
-            <div 
-              ref={svgRef} 
-              style={{ 
-                width: svgWidth, 
-                height: svgHeight, 
-                position: 'relative',
-                border: '1px solid #e0e0e0',
-                borderRadius: '4px'
+      {/* Emotion Legend - Top, Selectable */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        right: '20px',
+        background: 'rgba(0, 0, 0, 0.6)',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        borderRadius: '12px',
+        padding: '15px',
+        zIndex: 1000
+      }}>
+        <h4 style={{ 
+          color: '#ffffff', 
+          margin: '0 0 15px 0',
+          fontSize: '16px',
+          textAlign: 'center'
+        }}>
+          Select Emotions to Display
+        </h4>
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          gap: '12px', 
+          justifyContent: 'center' 
+        }}>
+          {emotions.map(emotion => (
+            <button
+              key={emotion}
+              onClick={() => handleEmotionToggle(emotion)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                borderRadius: '20px',
+                border: selectedEmotions.includes(emotion) 
+                  ? '2px solid #ffffff' 
+                  : '1px solid rgba(255, 255, 255, 0.3)',
+                background: selectedEmotions.includes(emotion)
+                  ? 'rgba(255, 255, 255, 0.2)'
+                  : 'rgba(0, 0, 0, 0.4)',
+                color: '#ffffff',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: selectedEmotions.includes(emotion) ? 'bold' : 'normal',
+                transition: 'all 0.2s ease'
               }}
             >
-              {/* Main Chart SVG - will be populated by D3 */}
+              <div style={{
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                background: colorScale(emotion)
+              }} />
+              {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {/* Chart Container - Takes full canvas, starts from extreme left */}
+      <div 
+        ref={svgRef} 
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          position: 'relative',
+          marginTop: '100px'
+        }}
+      >
+        {/* Main Chart SVG - will be populated by D3 */}
+      </div>
+      
+      {/* Overlay Controls - Positioned over the chart, NOT overlapping legend */}
+      {!selectedState && (
+        <div style={{
+          position: 'absolute',
+          top: '120px',
+          right: '20px',
+          background: 'rgba(0, 0, 0, 0.8)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: '12px',
+          padding: '20px',
+          width: window.innerWidth < 768 ? '280px' : '300px',
+          height: 'auto',
+          overflow: 'visible',
+          maxWidth: '90vw',
+          zIndex: 1000
+        }}>
+          
+          {/* State Filter */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ 
+              color: '#ffffff', 
+              fontWeight: 'bold', 
+              marginBottom: '8px', 
+              display: 'block',
+              fontSize: '14px'
+            }}>
+              Filter States:
+            </label>
+            <select 
+              multiple 
+              value={filteredStates}
+              onChange={(e) => {
+                const selected = Array.from(e.target.selectedOptions, option => option.value);
+                handleStateFilter(selected);
+              }}
+              style={{ 
+                height: '80px', 
+                padding: '8px',
+                borderRadius: '6px',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                background: 'rgba(0, 0, 0, 0.6)',
+                color: '#ffffff',
+                width: '100%'
+              }}
+            >
+              {allStates.map(state => (
+                <option key={state} value={state} style={{ background: '#000', color: '#fff' }}>
+                  {state}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Emotion Range Filter */}
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ 
+              color: '#ffffff', 
+              fontWeight: 'bold', 
+              marginBottom: '6px', 
+              display: 'block',
+              fontSize: '13px'
+            }}>
+              Emotion Range:
+            </label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={emotionRange[0]}
+                onChange={(e) => setEmotionRange([parseFloat(e.target.value), emotionRange[1]])}
+                style={{ flex: 1 }}
+              />
+              <span style={{ color: '#ffffff', fontSize: '11px', minWidth: '25px' }}>
+                {emotionRange[0].toFixed(2)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={emotionRange[1]}
+                onChange={(e) => setEmotionRange([emotionRange[0], parseFloat(e.target.value)])}
+                style={{ flex: 1 }}
+              />
+              <span style={{ color: '#ffffff', fontSize: '11px', minWidth: '25px' }}>
+                {emotionRange[1].toFixed(2)}
+              </span>
             </div>
           </div>
-        )}
 
-        {/* Time Series Chart */}
-        {selectedState && timeSeriesData && (
+          {/* Order By Emotion */}
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ 
+              color: '#ffffff', 
+              fontWeight: 'bold', 
+              marginBottom: '6px', 
+              display: 'block',
+              fontSize: '13px'
+            }}>
+              Order By:
+            </label>
+            <select
+              value={orderByEmotion}
+              onChange={(e) => setOrderByEmotion(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: '6px',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                background: 'rgba(0, 0, 0, 0.6)',
+                color: '#ffffff'
+              }}
+            >
+              <option value="">No Order</option>
+              {emotions.map(emotion => (
+                <option key={emotion} value={emotion} style={{ background: '#000', color: '#fff' }}>
+                  {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Reset Filters */}
+          <button
+            onClick={resetFilters}
+            style={{
+              width: '100%',
+              padding: '10px',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              marginBottom: '20px'
+            }}
+          >
+            Reset All Filters
+          </button>
+        </div>
+      )}
+
+      {/* Time Series Chart - Full Screen Overlay */}
+      {selectedState && timeSeriesData && (
+        <div style={{ 
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'rgba(0, 0, 0, 0.95)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
           <div style={{ 
-            background: 'white', 
-            padding: '20px', 
-            borderRadius: '8px', 
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            flex: '1'
+            background: 'rgba(0, 0, 0, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '90%',
+            maxHeight: '90%',
+            overflow: 'auto'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h4 style={{ margin: 0 }}>Time Series Analysis for {selectedState}</h4>
+              <h3 style={{ margin: 0, color: '#ffffff', fontSize: '24px' }}>
+                Time Series Analysis for {selectedState}
+              </h3>
               <button 
                 onClick={() => setSelectedState("")}
                 style={{
-                  padding: '8px 16px',
-                  background: '#6c757d',
+                  padding: '12px 20px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '14px'
                 }}
               >
                 ← Back to Dot Plot
@@ -495,204 +700,8 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
               selectedState={selectedState}
             />
           </div>
-        )}
-
-        {/* Color Legend */}
-        <div style={{ 
-          marginTop: '20px', 
-          padding: '20px', 
-          background: '#f8f9fa', 
-          borderRadius: '8px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center'
-        }}>
-          <h4 style={{ margin: '0 0 15px 0' }}>Emotion Colors:</h4>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center' }}>
-            {emotions.map((emotion, i) => (
-              <div 
-                key={emotion}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px',
-                  cursor: 'pointer',
-                  opacity: hoveredValue === emotion ? 1 : 0.7
-                }}
-                onMouseEnter={() => setHoveredValue({ emotion })}
-                onMouseLeave={() => setHoveredValue(null)}
-              >
-                <div 
-                  style={{
-                    width: '12px',
-                    height: '12px',
-                    borderRadius: '50%',
-                    backgroundColor: ['#FF0000', '#FFA500', '#008000', '#0000FF', '#FFC0CB', '#FFD700', '#9400D3', '#00FFFF', '#A9A9A9', '#808000'][i]
-                  }}
-                />
-                <span style={{ fontSize: '14px' }}>{emotion}</span>
-              </div>
-            ))}
-          </div>
         </div>
-      </div>
-
-      {/* Right Column - Filters (25% width) */}
-      <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        
-        {/* State Filter */}
-        <div style={{ 
-          background: '#f5f5f5', 
-          padding: '20px', 
-          borderRadius: '8px',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
-          <label style={{ fontWeight: 'bold', marginBottom: '12px', display: 'block' }}>
-            Filter States:
-          </label>
-          <select 
-            multiple 
-            value={filteredStates}
-            onChange={(e) => {
-              const selected = Array.from(e.target.selectedOptions, option => option.value);
-              handleStateFilter(selected);
-            }}
-            style={{ 
-              height: '120px', 
-              padding: '8px',
-              borderRadius: '4px',
-              border: '1px solid #ddd'
-            }}
-          >
-            {allStates.map(state => (
-              <option key={state} value={state}>{state}</option>
-            ))}
-          </select>
-          <div style={{ fontSize: '12px', color: '#666', marginTop: '8px' }}>
-            Hold Ctrl/Cmd to select multiple
-          </div>
-        </div>
-
-        {/* Order By Filter */}
-        <div style={{ 
-          background: '#f5f5f5', 
-          padding: '20px', 
-          borderRadius: '8px',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
-          <label style={{ fontWeight: 'bold', marginBottom: '12px', display: 'block' }}>
-            Order By Emotion:
-          </label>
-          <select 
-            value={orderOption?.value || ''}
-            onChange={(e) => {
-              const emotion = e.target.value;
-              if (emotion) {
-                const colorObj = colorObjects.find(c => c.emotion === emotion);
-                handleOrderChange(colorObj ? { value: emotion, label: emotion, color: colorObj.color } : null);
-              } else {
-                handleOrderChange(null);
-              }
-            }}
-            style={{ 
-              padding: '10px', 
-              borderRadius: '4px',
-              border: '1px solid #ddd',
-              fontSize: '14px'
-            }}
-          >
-            <option value="">Default Order</option>
-            {emotions.map(emotion => (
-              <option key={emotion} value={emotion}>{emotion}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Range Filter */}
-        <div style={{ 
-          background: '#f5f5f5', 
-          padding: '20px', 
-          borderRadius: '8px',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
-          <label style={{ fontWeight: 'bold', marginBottom: '12px', display: 'block' }}>
-            Emotion Range (0-1):
-          </label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <div>
-              <label style={{ fontSize: '14px', display: 'block', marginBottom: '8px' }}>Min: {tempRange[0]}</label>
-              <input 
-                type="range" 
-                min="0" 
-                max="1" 
-                step="0.01" 
-                value={tempRange[0]}
-                onChange={(e) => handleSliderChange(0, parseFloat(e.target.value))}
-                onMouseUp={(e) => handleSliderEnd(0, parseFloat(e.target.value))}
-                onTouchEnd={(e) => handleSliderEnd(0, parseFloat(e.target.value))}
-                style={{ 
-                  width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: '#ddd',
-                  outline: 'none'
-                }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '14px', display: 'block', marginBottom: '8px' }}>Max: {tempRange[1]}</label>
-              <input 
-                type="range" 
-                min="0" 
-                max="1" 
-                step="0.01" 
-                value={tempRange[1]}
-                onChange={(e) => handleSliderChange(1, parseFloat(e.target.value))}
-                onMouseUp={(e) => handleSliderEnd(1, parseFloat(e.target.value))}
-                onTouchEnd={(e) => handleSliderEnd(1, parseFloat(e.target.value))}
-                style={{ 
-                  width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: '#ddd',
-                  outline: 'none'
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Reset Button */}
-        <div style={{ 
-          background: '#f5f5f5', 
-          padding: '20px', 
-          borderRadius: '8px',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
-          <button 
-            onClick={resetFilters}
-            style={{
-              padding: '12px 20px',
-              background: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              transition: 'background-color 0.2s'
-            }}
-            onMouseEnter={(e) => e.target.style.background = '#0056b3'}
-            onMouseLeave={(e) => e.target.style.background = '#007bff'}
-          >
-            Reset All Filters
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 };

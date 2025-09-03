@@ -2,7 +2,7 @@
   text-align: center;
   min-height: 100vh;
   color: #ffffff;
-  background: transparent;
+  background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%);
 }
 
 .App-main {
@@ -90,4 +90,17 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Global dark theme */
+body {
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%);
+  color: #ffffff;
+  font-family: 'Arial', sans-serif;
+}
+
+html {
+  background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%);
 }
