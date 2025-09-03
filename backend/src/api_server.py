@@ -100,27 +100,29 @@ def stream_tweets():
     def event_stream():
         logger.system_event("SSE_CLIENT_CONNECTED")
         
-        while True:
-            consumer = get_kafka_consumer()
-            if not consumer:
-                yield format_sse({"error": "Kafka unavailable"}, "error")
-                time.sleep(5)
-                continue
-
-            try:
-                yield format_sse({"status": "connected"}, "connection")
+        # 🚀 Create consumer ONCE per connection
+        consumer = get_kafka_consumer()
+        if not consumer:
+            yield format_sse({"error": "Kafka unavailable"}, "error")
+            return  # Exit if Kafka is down
+        
+        try:
+            yield format_sse({"status": "connected"}, "connection")
+            
+            # 🚀 Use the SAME consumer for all messages
+            for message in consumer:
+                tweet = message.value
+                logger.system_event("UI_STREAMED", f"Tweet ID: {tweet.get('id', 'unknown')}")
+                yield format_sse(tweet, "tweet")
                 
-                for message in consumer:
-                    tweet = message.value
-                    logger.system_event("UI_STREAMED", f"Tweet ID: {tweet.get('id', 'unknown')}")
-                    yield format_sse(tweet, "tweet")
-
-            except Exception as e:
-                logger.error("API_SERVER", f"Stream error: {e}")
-                yield format_sse({"error": str(e)}, "error")
-                if consumer:
-                    consumer.close()
-                time.sleep(5)
+        except Exception as e:
+            logger.error("API_SERVER", f"Stream error: {e}")
+            yield format_sse({"error": str(e)}, "error")
+        finally:
+            # 🚀 Clean up consumer when done
+            if consumer:
+                consumer.close()
+                logger.system_event("KAFKA_CONSUMER_CLOSED")
     
     return Response(
         event_stream(),
@@ -237,6 +239,154 @@ def get_unique_states():
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get unique states: {e}")
         return jsonify({"error": "Database query failed"}), 500
+
+@app.route('/tweets/aggregated')
+def get_aggregated_emotions():
+    """Get aggregated emotion scores by state for dot plot"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                state_code,
+                anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg,
+                tweet_count, last_updated
+            FROM emotion_aggregates 
+            ORDER BY state_code
+        """)
+        
+        rows = cursor.fetchall()
+        aggregated_data = []
+        
+        for row in rows:
+            aggregated_data.append({
+                'state': row[0],
+                'anger': float(row[1]) if row[1] is not None else 0.0,
+                'joy': float(row[2]) if row[2] is not None else 0.0,
+                'fear': float(row[3]) if row[3] is not None else 0.0,
+                'sadness': float(row[4]) if row[4] is not None else 0.0,
+                'surprise': float(row[5]) if row[5] is not None else 0.0,
+                'positive': float(row[6]) if row[6] is not None else 0.0,
+                'negative': float(row[7]) if row[7] is not None else 0.0,
+                'anticipation': float(row[8]) if row[8] is not None else 0.0,
+                'trust': float(row[9]) if row[9] is not None else 0.0,
+                'disgust': float(row[10]) if row[10] is not None else 0.0,
+                'tweet_count': row[11],
+                'last_updated': row[12].isoformat() if row[12] else None
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        logger.system_event("UI_STREAMED", f"Streamed aggregated data for {len(aggregated_data)} states")
+        return jsonify(aggregated_data)
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to fetch aggregated emotions: {e}")
+        return jsonify({'error': 'Failed to fetch aggregated emotions'}), 500
+
+@app.route('/tweets/aggregated/stream')
+def stream_aggregated_emotions():
+    """Server-Sent Events endpoint for real-time aggregated emotion updates"""
+    def generate():
+        try:
+            conn = psycopg2.connect(**db_params)
+            cursor = conn.cursor()
+            
+            # Get initial data
+            cursor.execute("""
+                SELECT 
+                    state_code,
+                    anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                    positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg,
+                    tweet_count, last_updated
+                FROM emotion_aggregates 
+                ORDER BY state_code
+                """)
+            
+            rows = cursor.fetchall()
+            initial_data = []
+            
+            for row in rows:
+                initial_data.append({
+                    'state': row[0],
+                    'anger': float(row[1]) if row[1] is not None else 0.0,
+                    'joy': float(row[2]) if row[2] is not None else 0.0,
+                    'fear': float(row[3]) if row[3] is not None else 0.0,
+                    'sadness': float(row[4]) if row[4] is not None else 0.0,
+                    'surprise': float(row[5]) if row[5] is not None else 0.0,
+                    'positive': float(row[6]) if row[6] is not None else 0.0,
+                    'negative': float(row[7]) if row[7] is not None else 0.0,
+                    'anticipation': float(row[8]) if row[8] is not None else 0.0,
+                    'trust': float(row[9]) if row[9] is not None else 0.0,
+                    'disgust': float(row[10]) if row[10] is not None else 0.0,
+                    'tweet_count': row[11],
+                    'last_updated': row[12].isoformat() if row[12] else None
+                })
+            
+            # Send initial data
+            yield f"data: {json.dumps({'type': 'initial', 'data': initial_data})}\n\n"
+            
+            # Monitor for changes every 5 seconds
+            last_check = time.time()
+            while True:
+                time.sleep(5)
+                current_time = time.time()
+                
+                # Check for updates in the last 10 seconds
+                cursor.execute("""
+                    SELECT 
+                        state_code,
+                        anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                        positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg,
+                        tweet_count, last_updated
+                    FROM emotion_aggregates 
+                    WHERE last_updated > %s
+                    ORDER BY state_code
+                """, (datetime.datetime.fromtimestamp(last_check - 10),))
+                
+                updated_rows = cursor.fetchall()
+                if updated_rows:
+                    updated_data = []
+                    for row in updated_rows:
+                        updated_data.append({
+                            'state': row[0],
+                            'anger': float(row[1]) if row[1] is not None else 0.0,
+                            'joy': float(row[2]) if row[2] is not None else 0.0,
+                            'fear': float(row[3]) if row[3] is not None else 0.0,
+                            'sadness': float(row[4]) if row[4] is not None else 0.0,
+                            'surprise': float(row[5]) if row[5] is not None else 0.0,
+                            'positive': float(row[6]) if row[6] is not None else 0.0,
+                            'negative': float(row[7]) if row[7] is not None else 0.0,
+                            'anticipation': float(row[8]) if row[8] is not None else 0.0,
+                            'trust': float(row[9]) if row[9] is not None else 0.0,
+                            'disgust': float(row[10]) if row[10] is not None else 0.0,
+                            'tweet_count': row[11],
+                            'last_updated': row[12].isoformat() if row[12] else None
+                        })
+                    
+                    yield f"data: {json.dumps({'type': 'update', 'data': updated_data})}\n\n"
+                
+                last_check = current_time
+                
+        except Exception as e:
+            logger.error("API_SERVER", f"SSE stream error: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            if 'conn' in locals():
+                conn.close()
+    
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        }
+    )
 
 @app.route('/tweets/metrics')
 def get_metrics():

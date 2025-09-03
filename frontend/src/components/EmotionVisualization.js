@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import OriginalDotPlot from './OriginalDotPlot';
+import SimpleDotPlot from './SimpleDotPlot';
 import './EmotionVisualization.css';
 
 const dimensions = {
@@ -76,11 +76,11 @@ class EmotionVisualization extends Component {
   }
   
   callBackendAPI = async () => {
-    const response = await fetch('http://localhost:9000/data');
+    const response = await fetch('http://localhost:9000/tweets/aggregated');
     const body = await response.json();
 
     if (response.status !== 200) {
-      throw Error(body.message || 'Failed to fetch data')
+      throw Error(body.message || 'Failed to fetch aggregated data')
     }
     return body;
   };
@@ -96,7 +96,7 @@ class EmotionVisualization extends Component {
   };
 
   render() {
-    const { data, loading, error, lastUpdated } = this.state;
+    const { data, timeSeriesData, loading, error, lastUpdated } = this.state;
     
     return (
       <div className="emotion-visualization">
@@ -139,10 +139,11 @@ class EmotionVisualization extends Component {
               <h3>Interactive Dot Plot Chart</h3>
               <p>Real-time emotion scores by state • Updates every 30 seconds</p>
               <div className="dot-plot-chart">
-                <OriginalDotPlot
+                <SimpleDotPlot
                   data={data}
                   dimensions={dimensions}
                   colorObjects={emotionColorsObjects}
+                  timeSeriesData={timeSeriesData}
                 />
               </div>
             </div>
