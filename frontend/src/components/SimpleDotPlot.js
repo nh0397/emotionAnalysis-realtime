@@ -2,13 +2,12 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import * as d3 from 'd3';
 import TimeSeriesChart from './TimeSeriesChart';
 
-const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
+const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
   // Debug logging for component props
   console.log("🔍 SimpleDotPlot Component Debug:");
   console.log("  - data length:", data?.length);
   console.log("  - data sample:", data?.slice(0, 2));
   console.log("  - dimensions:", dimensions);
-  console.log("  - timeSeriesData length:", timeSeriesData?.length);
   
   const containerRef = useRef(null);
   const svgRef = useRef(null);
@@ -22,6 +21,8 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
   const [orderByEmotion, setOrderByEmotion] = useState("");
   const [selectedEmotions, setSelectedEmotions] = useState([]);
   const [showComparisonModal, setShowComparisonModal] = useState(false);
+  const [timeSeriesData, setTimeSeriesData] = useState([]);
+  const [loadingTimeSeries, setLoadingTimeSeries] = useState(false);
 
   // Chart dimensions - start from extreme left, minimal margins
   const isMobile = window.innerWidth < 768;
@@ -147,6 +148,40 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
 
   const handleTickClick = useCallback((state) => {
     setSelectedState(state);
+    fetchTimeSeriesData(state);
+  }, []);
+
+  const fetchTimeSeriesData = useCallback(async (stateCode) => {
+    if (!stateCode) return;
+    
+    setLoadingTimeSeries(true);
+    try {
+      console.log(`🕒 Fetching time series data for ${stateCode}...`);
+      const response = await fetch(`http://localhost:9000/timeSeriesData/${stateCode}`);
+      
+      console.log(`🔍 Response status: ${response.status}`);
+      console.log(`🔍 Response headers:`, response.headers);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ API Error: ${response.status} - ${errorText}`);
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      
+      console.log(`📊 Time series data for ${stateCode}:`, {
+        count: data.length,
+        sample: data.slice(0, 3)
+      });
+      
+      setTimeSeriesData(data);
+    } catch (error) {
+      console.error(`❌ Error fetching time series data for ${stateCode}:`, error);
+      setTimeSeriesData([]); // Clear data on error
+    } finally {
+      setLoadingTimeSeries(false);
+    }
   }, []);
 
   const handleStateFilter = useCallback((states) => {
@@ -720,16 +755,45 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
                 ← Back to Dot Plot
               </button>
             </div>
-            <TimeSeriesChart
-              dimensions={{
-                width: Math.min(800, window.innerWidth - 100),
-                height: 400,
-                margin: { top: 20, right: 30, bottom: 60, left: 60 }
-              }}
-              data={timeSeriesData}
-              states={allStates}
-              selectedState={selectedState}
-            />
+            {loadingTimeSeries ? (
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                height: '400px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '8px'
+              }}>
+                <div className="spinner"></div>
+                <p style={{ color: '#ffffff', marginTop: '20px' }}>
+                  Loading time series data for {selectedState}...
+                </p>
+              </div>
+            ) : timeSeriesData.length > 0 ? (
+              <TimeSeriesChart
+                dimensions={{
+                  width: Math.min(800, window.innerWidth - 100),
+                  height: 400,
+                  margin: { top: 20, right: 30, bottom: 60, left: 60 }
+                }}
+                data={timeSeriesData}
+                states={allStates}
+                selectedState={selectedState}
+              />
+            ) : (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                height: '400px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '8px',
+                color: '#ffffff'
+              }}>
+                <p>Click on a state name to view time series data</p>
+              </div>
+            )}
           </div>
         </div>
       )}

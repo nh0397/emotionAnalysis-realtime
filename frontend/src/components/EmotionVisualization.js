@@ -27,7 +27,6 @@ class EmotionVisualization extends Component {
     super(props);
     this.state = { 
       data: [], 
-      timeSeriesData: [], 
       loading: true, 
       error: null,
       lastUpdated: null
@@ -53,15 +52,12 @@ class EmotionVisualization extends Component {
   loadData = () => {
     this.setState({ loading: true, error: null });
     
-    Promise.all([
-      this.callBackendAPI(),
-      this.getTimeSeriesData()
-    ])
-    .then(([data, timeSeriesData]) => {
-      console.log(`📊 Data loaded: ${data.length} states, ${timeSeriesData.length} time series points`);
+    this.callBackendAPI()
+    .then((data) => {
+      console.log(`📊 Data loaded: ${data.length} states`);
+      
       this.setState({ 
         data: data, 
-        timeSeriesData: timeSeriesData,
         loading: false,
         lastUpdated: new Date()
       });
@@ -85,18 +81,9 @@ class EmotionVisualization extends Component {
     return body;
   };
 
-  getTimeSeriesData = async () => {
-    const response = await fetch('http://localhost:9000/timeSeriesData');
-    const body = await response.json();
-
-    if (response.status !== 200) {
-      throw Error(body.message || 'Failed to fetch time series data')
-    }
-    return body;
-  };
 
   render() {
-    const { data, timeSeriesData, loading, error, lastUpdated } = this.state;
+    const { data, loading, error, lastUpdated } = this.state;
     
     return (
       <div className="emotion-visualization">
@@ -138,12 +125,13 @@ class EmotionVisualization extends Component {
             <div className="chart-section">
               <h3>Interactive Dot Plot Chart</h3>
               <p>Real-time emotion scores by state • Updates every 30 seconds</p>
+              
+              
               <div className="dot-plot-chart">
                 <SimpleDotPlot
                   data={data}
                   dimensions={dimensions}
                   colorObjects={emotionColorsObjects}
-                  timeSeriesData={timeSeriesData}
                 />
               </div>
             </div>

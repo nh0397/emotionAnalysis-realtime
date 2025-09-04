@@ -134,18 +134,18 @@ class SimpleDummyGenerator:
         # Get state modifier or use default
         state_mod = state_modifiers.get(state_code, {})
         
-        # Generate base emotions with randomization
+        # Generate base emotions with full randomization (0 to 1 scale)
         base_emotions = {
-            'anger': random.uniform(0.1, 0.7),
-            'fear': random.uniform(0.05, 0.6),
-            'sadness': random.uniform(0.1, 0.5),
-            'surprise': random.uniform(0.2, 0.8),
-            'joy': random.uniform(0.3, 0.8),
-            'anticipation': random.uniform(0.2, 0.7),
-            'trust': random.uniform(0.1, 0.6),
-            'disgust': random.uniform(0.05, 0.4),
-            'positive': random.uniform(0.2, 0.8),
-            'negative': random.uniform(0.1, 0.5)
+            'anger': random.uniform(0.0, 1.0),
+            'fear': random.uniform(0.0, 1.0),
+            'sadness': random.uniform(0.0, 1.0),
+            'surprise': random.uniform(0.0, 1.0),
+            'joy': random.uniform(0.0, 1.0),
+            'anticipation': random.uniform(0.0, 1.0),
+            'trust': random.uniform(0.0, 1.0),
+            'disgust': random.uniform(0.0, 1.0),
+            'positive': random.uniform(0.0, 1.0),
+            'negative': random.uniform(0.0, 1.0)
         }
         
         # Apply state modifiers
@@ -278,12 +278,12 @@ class SimpleDummyGenerator:
             print(f"❌ Failed to insert record: {e}")
             return False
 
-    def generate_data(self, start_date=None, end_date=None, records_per_state_per_day=10):
+    def generate_data(self, start_date=None, end_date=None, records_per_state_per_day=5):
         """Generate data for the specified date range"""
         if not start_date:
-            start_date = datetime(2024, 1, 1)
+            start_date = datetime(2025, 1, 1)  # Start from Jan 1, 2025
         if not end_date:
-            end_date = datetime(2025, 1, 1)
+            end_date = datetime.now()  # End at today
         
         conn = self.connect_db()
         if not conn:
@@ -356,10 +356,123 @@ class SimpleDummyGenerator:
             print(f"⏱️  Total time: {elapsed:.1f} seconds")
             print(f"🚀 Average rate: {total_records / elapsed:.0f} records/sec")
             
+            # Time series data will be generated on-demand from tweets table
+            print("✅ Tweets ready! Time series data will be generated from tweets when needed.")
+            
             return True
             
         except Exception as e:
             print(f"❌ Data generation failed: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def generate_time_series_data(self, start_date=None, end_date=None):
+        """Generate time series data for the TimeSeriesChart component"""
+        if not start_date:
+            start_date = datetime(2024, 1, 1)
+        if not end_date:
+            end_date = datetime(2025, 1, 1)
+        
+        conn = self.connect_db()
+        if not conn:
+            return False
+        
+        try:
+            print("🕒 Generating time series data...")
+            
+            # Calculate date range
+            current_date = start_date
+            date_range = []
+            while current_date <= end_date:
+                date_range.append(current_date)
+                current_date += timedelta(days=1)
+            
+            print(f"📅 Generating {len(date_range)} days of time series data for {len(self.states)} states")
+            
+            # Create time series data table if it doesn't exist
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS time_series_data (
+                    id SERIAL PRIMARY KEY,
+                    date DATE NOT NULL,
+                    state_code CHAR(2) NOT NULL,
+                    anger FLOAT DEFAULT 0.0,
+                    fear FLOAT DEFAULT 0.0,
+                    sadness FLOAT DEFAULT 0.0,
+                    surprise FLOAT DEFAULT 0.0,
+                    joy FLOAT DEFAULT 0.0,
+                    anticipation FLOAT DEFAULT 0.0,
+                    trust FLOAT DEFAULT 0.0,
+                    disgust FLOAT DEFAULT 0.0,
+                    positive FLOAT DEFAULT 0.0,
+                    negative FLOAT DEFAULT 0.0,
+                    UNIQUE(date, state_code)
+                )
+            """)
+            
+            # Clear existing time series data
+            cursor.execute("DELETE FROM time_series_data")
+            
+            total_records = 0
+            
+            for date in date_range:
+                for state_code in self.states:
+                    # Generate daily emotion averages for this state
+                    daily_emotions = {}
+                    
+                    # Generate base emotions for this state/date combination
+                    base_emotions = self.generate_synthetic_emotions(state_code, "Daily Average", date)
+                    
+                    # Add some daily trend variation (emotions change over time)
+                    day_of_year = date.timetuple().tm_yday
+                    
+                    # Weekly patterns (weekends vs weekdays)
+                    weekday = date.weekday()
+                    if weekday >= 5:  # Weekend
+                        base_emotions['joy'] = min(1.0, base_emotions['joy'] + 0.1)
+                        base_emotions['positive'] = min(1.0, base_emotions['positive'] + 0.1)
+                        base_emotions['anger'] = max(0.0, base_emotions['anger'] - 0.05)
+                        base_emotions['fear'] = max(0.0, base_emotions['fear'] - 0.05)
+                    
+                    # Monthly patterns (beginning/end of month)
+                    day_of_month = date.day
+                    if day_of_month <= 5:  # Beginning of month
+                        base_emotions['anticipation'] = min(1.0, base_emotions['anticipation'] + 0.1)
+                        base_emotions['trust'] = min(1.0, base_emotions['trust'] + 0.05)
+                    elif day_of_month >= 25:  # End of month
+                        base_emotions['stress'] = min(1.0, base_emotions.get('stress', 0.0) + 0.1)
+                        base_emotions['fear'] = min(1.0, base_emotions['fear'] + 0.05)
+                    
+                    # Insert time series record
+                    insert_query = f"""
+                        INSERT INTO time_series_data (
+                            date, state_code, anger, fear, sadness, surprise, joy, 
+                            anticipation, trust, disgust, positive, negative
+                        ) VALUES (
+                            '{date.strftime('%Y-%m-%d')}', '{state_code}', 
+                            {base_emotions['anger']}, {base_emotions['fear']}, {base_emotions['sadness']}, 
+                            {base_emotions['surprise']}, {base_emotions['joy']}, {base_emotions['anticipation']}, 
+                            {base_emotions['trust']}, {base_emotions['disgust']}, 
+                            {base_emotions['positive']}, {base_emotions['negative']}
+                        )
+                    """
+                    
+                    cursor.execute(insert_query)
+                    total_records += 1
+                    
+                    if total_records % 100 == 0:
+                        print(f"📊 Generated {total_records:,} time series records")
+            
+            conn.commit()
+            print(f"✅ Time series data generation complete: {total_records:,} records")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Time series data generation failed: {e}")
+            import traceback
+            traceback.print_exc()
             conn.rollback()
             return False
         finally:
@@ -424,9 +537,9 @@ class SimpleDummyGenerator:
 def main():
     parser = argparse.ArgumentParser(description='Generate dummy emotion data')
     parser.add_argument('--clean', action='store_true', help='Clean database before generating')
-    parser.add_argument('--start-date', default='2024-01-01', help='Start date (YYYY-MM-DD)')
-    parser.add_argument('--end-date', default='2025-01-01', help='End date (YYYY-MM-DD)')
-    parser.add_argument('--records-per-day', type=int, default=10, help='Records per state per day')
+    parser.add_argument('--start-date', default='2025-01-01', help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--end-date', default=None, help='End date (YYYY-MM-DD), defaults to today')
+    parser.add_argument('--records-per-day', type=int, default=5, help='Records per state per day')
     
     args = parser.parse_args()
     
@@ -449,7 +562,10 @@ def main():
     
     # Parse dates
     start_date = datetime.strptime(args.start_date, '%Y-%m-%d')
-    end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
+    if args.end_date:
+        end_date = datetime.strptime(args.end_date, '%Y-%m-%d')
+    else:
+        end_date = datetime.now()  # Default to today
     
     print("🚀 Starting dummy data generation...")
     print(f"📅 Date range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")

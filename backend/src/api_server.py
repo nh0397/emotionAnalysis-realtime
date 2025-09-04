@@ -563,9 +563,9 @@ def get_dot_plot_data():
         logger.error("API_SERVER", f"Failed to get dot plot data: {e}")
         return jsonify({"error": "Visualization query failed"}), 500
 
-@app.route('/timeSeriesData')
-def get_time_series_data():
-    """Get time series emotion data for all states (like new_dummy_emotion_data.csv)"""
+@app.route('/timeSeriesData/<state_code>')
+def get_state_time_series_data(state_code):
+    """Get time series emotion data for a specific state"""
     conn = get_db_connection()
     if not conn:
         return jsonify({"error": "Database unavailable"}), 500
@@ -573,11 +573,10 @@ def get_time_series_data():
     try:
         cursor = conn.cursor()
         
-        # Get time series data (by day) for all states, exactly like CSV format
+        # Get daily emotion averages for the specific state
         cursor.execute("""
             SELECT 
-                state_code as state,
-                DATE(created_at) as date,
+                DATE(timestamp) as date,
                 AVG(anger) as anger,
                 AVG(fear) as fear,
                 AVG(sadness) as sadness,
@@ -587,35 +586,87 @@ def get_time_series_data():
                 AVG(trust) as trust,
                 AVG(disgust) as disgust
             FROM tweets 
-            WHERE state_code IS NOT NULL
-            GROUP BY state_code, DATE(created_at)
-            ORDER BY state_code, DATE(created_at) DESC
-            LIMIT 1000
-        """)
+            WHERE state_code = %s
+            GROUP BY DATE(timestamp)
+            ORDER BY date DESC
+            LIMIT 365
+        """, (state_code,))
+        
+        time_series_data = []
+        for row in cursor.fetchall():
+            time_series_data.append({
+                "state": state_code,
+                "date": row[0].strftime('%Y-%m-%d') if row[0] else None,
+                "anger": round(row[1] or 0.0, 3),
+                "fear": round(row[2] or 0.0, 3),
+                "sadness": round(row[3] or 0.0, 3),
+                "surprise": round(row[4] or 0.0, 3),
+                "joy": round(row[5] or 0.0, 3),
+                "anticipation": round(row[6] or 0.0, 3),
+                "trust": round(row[7] or 0.0, 3),
+                "disgust": round(row[8] or 0.0, 3)
+            })
+        
+        conn.close()
+        
+        return jsonify(time_series_data)
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to get time series data for {state_code}: {e}")
+        return jsonify({"error": "Time series query failed"}), 500
+
+@app.route('/timeSeriesData/compare/<state1>/<state2>')
+def get_comparison_time_series_data(state1, state2):
+    """Get time series emotion data for comparing two states"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Get daily emotion averages for both states
+        cursor.execute("""
+            SELECT 
+                state_code,
+                DATE(timestamp) as date,
+                AVG(anger) as anger,
+                AVG(fear) as fear,
+                AVG(sadness) as sadness,
+                AVG(surprise) as surprise,
+                AVG(joy) as joy,
+                AVG(anticipation) as anticipation,
+                AVG(trust) as trust,
+                AVG(disgust) as disgust
+            FROM tweets 
+            WHERE state_code IN (%s, %s)
+            GROUP BY state_code, DATE(timestamp)
+            ORDER BY date DESC, state_code
+            LIMIT 730
+        """, (state1, state2))
         
         time_series_data = []
         for row in cursor.fetchall():
             time_series_data.append({
                 "state": row[0],
                 "date": row[1].strftime('%Y-%m-%d') if row[1] else None,
-                "anger": round(row[2] or 0.0, 17),  # High precision like CSV
-                "fear": round(row[3] or 0.0, 16),
-                "sadness": round(row[4] or 0.0, 16),
-                "surprise": round(row[5] or 0.0, 17),
-                "joy": round(row[6] or 0.0, 17),
-                "anticipation": round(row[7] or 0.0, 16),
-                "trust": round(row[8] or 0.0, 16),
-                "disgust": round(row[9] or 0.0, 18)
+                "anger": round(row[2] or 0.0, 3),
+                "fear": round(row[3] or 0.0, 3),
+                "sadness": round(row[4] or 0.0, 3),
+                "surprise": round(row[5] or 0.0, 3),
+                "joy": round(row[6] or 0.0, 3),
+                "anticipation": round(row[7] or 0.0, 3),
+                "trust": round(row[8] or 0.0, 3),
+                "disgust": round(row[9] or 0.0, 3)
             })
         
         conn.close()
         
-        # Return array directly like the original expects
         return jsonify(time_series_data)
         
     except Exception as e:
-        logger.error("API_SERVER", f"Failed to get time series data: {e}")
-        return jsonify({"error": "Time series query failed"}), 500
+        logger.error("API_SERVER", f"Failed to get comparison data for {state1} vs {state2}: {e}")
+        return jsonify({"error": "Comparison query failed"}), 500
 
 if __name__ == "__main__":
     logger.system_event("API_SERVER_STARTING", "Port 9000")
