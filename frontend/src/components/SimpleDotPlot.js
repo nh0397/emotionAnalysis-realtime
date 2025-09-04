@@ -3,6 +3,13 @@ import * as d3 from 'd3';
 import TimeSeriesChart from './TimeSeriesChart';
 
 const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
+  // Debug logging for component props
+  console.log("🔍 SimpleDotPlot Component Debug:");
+  console.log("  - data length:", data?.length);
+  console.log("  - data sample:", data?.slice(0, 2));
+  console.log("  - dimensions:", dimensions);
+  console.log("  - timeSeriesData length:", timeSeriesData?.length);
+  
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   
@@ -14,6 +21,7 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
   const [emotionRange, setEmotionRange] = useState([0, 1]);
   const [orderByEmotion, setOrderByEmotion] = useState("");
   const [selectedEmotions, setSelectedEmotions] = useState([]);
+  const [showComparisonModal, setShowComparisonModal] = useState(false);
 
   // Chart dimensions - start from extreme left, minimal margins
   const isMobile = window.innerWidth < 768;
@@ -85,6 +93,13 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
       filtered.sort((a, b) => (b[orderByEmotion] || 0) - (a[orderByEmotion] || 0));
     }
     
+    console.log("🔍 ProcessedData Debug:");
+    console.log("  - Input data length:", data?.length);
+    console.log("  - Filtered states:", filteredStates);
+    console.log("  - Selected emotions:", selectedEmotions);
+    console.log("  - Output filtered length:", filtered?.length);
+    console.log("  - Sample filtered data:", filtered?.slice(0, 2));
+    
     return filtered;
   }, [data, filteredStates, emotionRange, orderByEmotion, selectedEmotions]);
 
@@ -108,12 +123,27 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
 
   // Event handlers
   const handleLineClick = useCallback((state) => {
-    setSelectedLines(prev => 
-      prev.includes(state) 
+    setSelectedLines(prev => {
+      const newSelection = prev.includes(state) 
         ? prev.filter(s => s !== state)
-        : [...prev, state].slice(-2)
-    );
-  }, []);
+        : [...prev, state].slice(-2);
+      
+      // Show comparison modal when exactly 2 lines are selected
+      if (newSelection.length === 2) {
+        console.log("🔍 Opening comparison modal for states:", newSelection);
+        console.log("🔍 Available processedData:", processedData);
+        console.log("🔍 Selected states data:", {
+          state1: processedData.find(d => d.state === newSelection[0]),
+          state2: processedData.find(d => d.state === newSelection[1])
+        });
+        setShowComparisonModal(true);
+      } else {
+        setShowComparisonModal(false);
+      }
+      
+      return newSelection;
+    });
+  }, [processedData]);
 
   const handleTickClick = useCallback((state) => {
     setSelectedState(state);
@@ -138,6 +168,7 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
     setSelectedLines([]);
     setHoveredValue(null);
     setSelectedEmotions([]);
+    setShowComparisonModal(false);
   }, []);
 
   // Main rendering effect
@@ -501,7 +532,7 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
       {!selectedState && (
         <div style={{
           position: 'absolute',
-          top: '120px',
+          top: '210px',
           right: '20px',
           background: 'rgba(0, 0, 0, 0.8)',
           backdropFilter: 'blur(10px)',
@@ -699,6 +730,452 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects, timeSeriesData }) => {
               states={allStates}
               selectedState={selectedState}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Comparison Modal - Shows when 2 lines are selected */}
+      {showComparisonModal && selectedLines.length === 2 && (
+        <div style={{ 
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'rgba(0, 0, 0, 0.95)',
+          backdropFilter: 'blur(10px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{ 
+            background: 'rgba(0, 0, 0, 0.8)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '16px',
+            padding: '30px',
+            maxWidth: '95%',
+            maxHeight: '95%',
+            overflow: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: '#ffffff', fontSize: '24px' }}>
+                Emotion Comparison: {selectedLines[0]} vs {selectedLines[1]}
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowComparisonModal(false);
+                  setSelectedLines([]);
+                }}
+                style={{
+                  padding: '12px 20px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '14px'
+                }}
+              >
+                ← Back to Dot Plot
+              </button>
+            </div>
+            
+            {/* Charts Container */}
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: window.innerWidth < 1200 ? 'column' : 'row',
+              gap: '30px',
+              alignItems: 'flex-start'
+            }}>
+              {/* Radar Chart */}
+              <div style={{ 
+                flex: 1,
+                minWidth: '400px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '12px',
+                padding: '20px',
+                border: '1px solid rgba(255, 255, 255, 0.1)'
+              }}>
+                <h4 style={{ 
+                  margin: '0 0 15px 0', 
+                  color: '#ffffff', 
+                  fontSize: '18px',
+                  textAlign: 'center'
+                }}>
+                  Emotion Radar Chart
+                </h4>
+                
+                {/* Debug Info */}
+                <div style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)', 
+                  padding: '10px', 
+                  borderRadius: '8px', 
+                  marginBottom: '15px',
+                  fontSize: '12px',
+                  color: '#ffffff'
+                }}>
+                  <div>Selected States: {selectedLines.join(' vs ')}</div>
+                  <div>Data Available: {processedData.length} records</div>
+                  <div>State 1 Data: {processedData.find(d => d.state === selectedLines[0]) ? '✅' : '❌'}</div>
+                  <div>State 2 Data: {processedData.find(d => d.state === selectedLines[1]) ? '✅' : '❌'}</div>
+                </div>
+                <svg width="600" height="500" style={{ background: 'transparent' }}>
+                  {(() => {
+                    const state1Data = processedData.find(d => d.state === selectedLines[0]);
+                    const state2Data = processedData.find(d => d.state === selectedLines[1]);
+                    
+                    // Debug logging
+                    console.log("🔍 Radar Chart Debug:");
+                    console.log("  - selectedLines:", selectedLines);
+                    console.log("  - state1Data:", state1Data);
+                    console.log("  - state2Data:", state2Data);
+                    console.log("  - processedData length:", processedData.length);
+                    
+                    if (!state1Data || !state2Data) {
+                      console.log("❌ Missing state data for radar chart");
+                      return (
+                        <text x="300" y="250" textAnchor="middle" fill="#ffffff" fontSize="16px">
+                          ❌ Missing data for comparison
+                        </text>
+                      );
+                    }
+                    
+                    const centerX = 300;
+                    const centerY = 250;
+                    const radius = 150;
+                    const numEmotions = emotions.length;
+                    
+                    // Calculate points for radar chart
+                    const getPoint = (emotion, value, stateIndex) => {
+                      const angle = (emotions.indexOf(emotion) / numEmotions) * 2 * Math.PI - Math.PI / 2;
+                      const distance = radius * value;
+                      const x = centerX + distance * Math.cos(angle);
+                      const y = centerY + distance * Math.sin(angle);
+                      return { x, y, angle };
+                    };
+                    
+                    // Draw radar grid
+                    const gridLevels = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+                    gridLevels.forEach(level => {
+                      const points = emotions.map((emotion, i) => {
+                        const angle = (i / numEmotions) * 2 * Math.PI - Math.PI / 2;
+                        const x = centerX + radius * level * Math.cos(angle);
+                        const y = centerY + radius * level * Math.sin(angle);
+                        return { x, y };
+                      });
+                      
+                      // Close the polygon
+                      points.push(points[0]);
+                      
+                      // Draw grid lines
+                      return (
+                        <polygon
+                          key={`grid-${level}`}
+                          points={points.map(p => `${p.x},${p.y}`).join(' ')}
+                          fill="none"
+                          stroke="rgba(255, 255, 255, 0.1)"
+                          strokeWidth="1"
+                        />
+                      );
+                    });
+                    
+                    // Draw emotion axis lines
+                    const axisLines = emotions.map((emotion, i) => {
+                      const angle = (i / numEmotions) * 2 * Math.PI - Math.PI / 2;
+                      const x = centerX + radius * Math.cos(angle);
+                      const y = centerY + radius * Math.sin(angle);
+                      
+                      return (
+                        <line
+                          key={`axis-${emotion}`}
+                          x1={centerX}
+                          y1={centerY}
+                          x2={x}
+                          y2={y}
+                          stroke="rgba(255, 255, 255, 0.2)"
+                          strokeWidth="1"
+                        />
+                      );
+                    });
+                    
+                    // Draw emotion labels
+                    const emotionLabels = emotions.map((emotion, i) => {
+                      const angle = (i / numEmotions) * 2 * Math.PI - Math.PI / 2;
+                      const labelRadius = radius + 25;
+                      const x = centerX + labelRadius * Math.cos(angle);
+                      const y = centerY + labelRadius * Math.sin(angle);
+                      
+                      return (
+                        <text
+                          key={`label-${emotion}`}
+                          x={x}
+                          y={y}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fill="#ffffff"
+                          fontSize="12px"
+                        >
+                          {emotion}
+                        </text>
+                      );
+                    });
+                    
+                    // Draw State 1 polygon
+                    const state1Points = emotions.map(emotion => {
+                      const value = state1Data[emotion] || 0;
+                      return getPoint(emotion, value, 0);
+                    });
+                    state1Points.push(state1Points[0]); // Close polygon
+                    
+                    const state1Polygon = (
+                      <polygon
+                        points={state1Points.map(p => `${p.x},${p.y}`).join(' ')}
+                        fill="rgba(255, 119, 0, 0.3)"
+                        stroke="#ff7700"
+                        strokeWidth="3"
+                      />
+                    );
+                    
+                    // Draw State 2 polygon
+                    const state2Points = emotions.map(emotion => {
+                      const value = state2Data[emotion] || 0;
+                      return getPoint(emotion, value, 1);
+                    });
+                    state2Points.push(state2Points[0]); // Close polygon
+                    
+                    const state2Polygon = (
+                      <polygon
+                        points={state2Points.map(p => `${p.x},${p.y}`).join(' ')}
+                        fill="rgba(26, 118, 255, 0.3)"
+                        stroke="#1a76ff"
+                        strokeWidth="2"
+                      />
+                    );
+                    
+                    // Draw data points
+                    const state1DataPoints = emotions.map(emotion => {
+                      const value = state1Data[emotion] || 0;
+                      const point = getPoint(emotion, value, 0);
+                      return (
+                        <circle
+                          key={`point1-${emotion}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r="3"
+                          fill="#ff7700"
+                        />
+                      );
+                    });
+                    
+                    const state2DataPoints = emotions.map(emotion => {
+                      const value = state2Data[emotion] || 0;
+                      const point = getPoint(emotion, value, 1);
+                      return (
+                        <circle
+                          key={`point2-${emotion}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r="3"
+                          fill="#1a76ff"
+                        />
+                      );
+                    });
+                    
+                    // Legend
+                    const legend = (
+                      <g>
+                        <circle cx={centerX - 60} cy={centerY + radius + 20} r="6" fill="#ff7700" />
+                        <text x={centerX - 50} y={centerY + radius + 20} fill="#ffffff" fontSize="12px" dominantBaseline="middle">
+                          {selectedLines[0]}
+                        </text>
+                        <circle cx={centerX + 20} cy={centerY + radius + 20} r="6" fill="#1a76ff" />
+                        <text x={centerX + 30} y={centerY + radius + 20} fill="#ffffff" fontSize="12px" dominantBaseline="middle">
+                          {selectedLines[1]}
+                        </text>
+                      </g>
+                    );
+                    
+                    return (
+                      <g>
+                        {gridLevels.map(level => {
+                          const points = emotions.map((emotion, i) => {
+                            const angle = (i / numEmotions) * 2 * Math.PI - Math.PI / 2;
+                            const x = centerX + radius * level * Math.cos(angle);
+                            const y = centerY + radius * level * Math.sin(angle);
+                            return { x, y };
+                          });
+                          points.push(points[0]);
+                          
+                          return (
+                            <polygon
+                              key={`grid-${level}`}
+                              points={points.map(p => `${p.x},${p.y}`).join(' ')}
+                              fill="none"
+                              stroke="rgba(255, 255, 255, 0.1)"
+                              strokeWidth="1"
+                            />
+                          );
+                        })}
+                        {axisLines}
+                        {emotionLabels}
+                        {state1Polygon}
+                        {state2Polygon}
+                        {state1DataPoints}
+                        {state2DataPoints}
+                        {legend}
+                      </g>
+                    );
+                  })()}
+                </svg>
+              </div>
+
+                            {/* Difference Bar Chart */}
+              <div style={{ 
+                flex: 1,
+                minWidth: '400px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '12px',
+                padding: '20px',
+                border: '1px solid rgba(255, 255, 255, 0.1)'
+              }}>
+                <h4 style={{ 
+                  margin: '0 0 15px 0', 
+                  color: '#ffffff', 
+                  fontSize: '18px',
+                  textAlign: 'center'
+                }}>
+                  Emotion Differences
+                </h4>
+                
+                {/* Debug Info */}
+                <div style={{ 
+                  background: 'rgba(255, 255, 255, 0.1)', 
+                  padding: '10px', 
+                  borderRadius: '8px', 
+                  marginBottom: '15px',
+                  fontSize: '12px',
+                  color: '#ffffff'
+                }}>
+                  <div>State 1: {selectedLines[0]} - {processedData.find(d => d.state === selectedLines[0]) ? '✅' : '❌'}</div>
+                  <div>State 2: {selectedLines[1]} - {processedData.find(d => d.state === selectedLines[1]) ? '✅' : '❌'}</div>
+                </div>
+                <svg width="400" height="300" style={{ background: 'transparent' }}>
+                  {(() => {
+                    const state1Data = processedData.find(d => d.state === selectedLines[0]);
+                    const state2Data = processedData.find(d => d.state === selectedLines[1]);
+                    
+                    console.log("🔍 Difference Bar Chart Debug:");
+                    console.log("  - state1Data:", state1Data);
+                    console.log("  - state2Data:", state2Data);
+                    
+                    if (!state1Data || !state2Data) {
+                      console.log("❌ Missing state data for difference chart");
+                      return (
+                        <text x="200" y="150" textAnchor="middle" fill="#ffffff" fontSize="16px">
+                          ❌ Missing data for comparison
+                        </text>
+                      );
+                    }
+                    
+                    const chartWidth = 300;
+                    const chartHeight = 200;
+                    const margin = { top: 20, right: 20, bottom: 40, left: 80 };
+                    const innerWidth = chartWidth - margin.left - margin.right;
+                    const innerHeight = chartHeight - margin.top - margin.bottom;
+                    
+                    const yScale = d3.scaleBand()
+                      .domain(emotions)
+                      .range([margin.top, margin.top + innerHeight])
+                      .padding(0.1);
+                    
+                    const xScale = d3.scaleLinear()
+                      .domain([-1, 1])
+                      .range([0, innerWidth]);
+                    
+                    const differences = emotions.map(emotion => ({
+                      emotion,
+                      difference: (state1Data[emotion] || 0) - (state2Data[emotion] || 0)
+                    }));
+                    
+                    return (
+                      <g>
+                        {/* Bars */}
+                        {differences.map((item, i) => {
+                          const y = yScale(item.emotion);
+                          const barHeight = yScale.bandwidth();
+                          const barWidth = Math.abs(xScale(item.difference) - xScale(0));
+                          const x = item.difference > 0 ? xScale(0) : xScale(item.difference);
+                          
+                          return (
+                            <rect
+                              key={item.emotion}
+                              x={margin.left + x}
+                              y={y}
+                              width={barWidth}
+                              height={barHeight}
+                              fill={item.difference > 0 ? "#4CAF50" : "#FF5722"}
+                              opacity={0.8}
+                            />
+                          );
+                        })}
+                        
+                        {/* Y-axis labels */}
+                        {emotions.map((emotion, i) => {
+                          const y = yScale(emotion) + yScale.bandwidth() / 2;
+                          return (
+                            <text
+                              key={`label-${emotion}`}
+                              x={margin.left - 10}
+                              y={y}
+                              textAnchor="end"
+                              fill="#ffffff"
+                              fontSize="10px"
+                              dominantBaseline="middle"
+                            >
+                              {emotion}
+                            </text>
+                          );
+                        })}
+                        
+                        {/* X-axis */}
+                        <line
+                          x1={margin.left + xScale(0)}
+                          y1={margin.top}
+                          x2={margin.left + xScale(0)}
+                          y2={margin.top + innerHeight}
+                          stroke="#ffffff"
+                          strokeWidth="1"
+                          opacity={0.5}
+                        />
+                        
+                        {/* X-axis labels */}
+                        <text
+                          x={margin.left + xScale(-0.5)}
+                          y={chartHeight - 10}
+                          textAnchor="middle"
+                          fill="#ffffff"
+                          fontSize="10px"
+                        >
+                          {selectedLines[1]} Higher
+                        </text>
+                        <text
+                          x={margin.left + xScale(0.5)}
+                          y={chartHeight - 10}
+                          textAnchor="middle"
+                          fill="#ffffff"
+                          fontSize="10px"
+                        >
+                          {selectedLines[0]} Higher
+                        </text>
+                      </g>
+                    );
+                  })()}
+                </svg>
+              </div>
+            </div>
           </div>
         </div>
       )}
