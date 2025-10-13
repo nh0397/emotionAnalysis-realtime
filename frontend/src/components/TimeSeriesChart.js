@@ -16,10 +16,71 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
   const [activeTab, setActiveTab] = useState(1);
   const [selectedState1, setSelectedState1] = useState(allStates[0]);
   const [selectedState2, setSelectedState2] = useState(allStates[1]);
+  const [timeSeriesData, setTimeSeriesData] = useState([]);
+  const [loadingTimeSeries, setLoadingTimeSeries] = useState(false);
+
+  // Function to fetch time series data for a state
+  const fetchTimeSeriesData = async (stateCode) => {
+    if (!stateCode) return;
+    
+    setLoadingTimeSeries(true);
+    try {
+      console.log(`🕒 Fetching time series data for ${stateCode}...`);
+      const response = await fetch(`http://localhost:9000/timeSeriesData/${stateCode}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ API Error: ${response.status} - ${errorText}`);
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
+      }
+      
+      const fetchedData = await response.json();
+      console.log(`✅ Time series data loaded for ${stateCode}:`, fetchedData);
+      
+      // Store the fetched data in state
+      setTimeSeriesData(fetchedData);
+      
+    } catch (error) {
+      console.error(`❌ Error fetching time series data for ${stateCode}:`, error);
+    } finally {
+      setLoadingTimeSeries(false);
+    }
+  };
+
+  // Auto-fetch time series data when currentState changes
+  useEffect(() => {
+    if (currentState) {
+      fetchTimeSeriesData(currentState);
+    }
+  }, [currentState]);
 
   useEffect(() => {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
+
+    // Show loading state
+    if (loadingTimeSeries) {
+      svg.append("text")
+        .attr("x", (width + margin.left + margin.right) / 2)
+        .attr("y", (height + margin.top + margin.bottom) / 2)
+        .attr("text-anchor", "middle")
+        .style("fill", "#ffffff")
+        .style("font-size", "16px")
+        .text("Loading time series data...");
+      return;
+    }
+
+    // If no time series data, show message
+    if (timeSeriesData.length === 0 && currentState) {
+      svg.append("text")
+        .attr("x", (width + margin.left + margin.right) / 2)
+        .attr("y", (height + margin.top + margin.bottom) / 2)
+        .attr("text-anchor", "middle")
+        .style("fill", "#ffffff")
+        .style("font-size", "16px")
+        .text(`Select a state to view time series data for ${currentState}`);
+      return;
+    }
 
     if (activeTab === 3) {
       const state1Data = data.filter((d) => d.state === selectedState1);
@@ -136,8 +197,17 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
 
     chartItems.forEach((item, index) => {
       const chartData = isTab1
-        ? data.filter(d => d.state === currentState)
+        ? timeSeriesData.length > 0 ? timeSeriesData : data.filter(d => d.state === currentState)
         : data.filter(d => d.state === item);
+
+      // Debug logging
+      console.log(`🔍 Chart rendering for ${currentState}:`, {
+        isTab1,
+        timeSeriesDataLength: timeSeriesData.length,
+        chartDataLength: chartData.length,
+        currentState,
+        item
+      });
 
       const xScale = d3.scaleTime()
         .domain(d3.extent(chartData, d => new Date(d.date)))
@@ -203,7 +273,7 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
 
     return () => tooltip.remove();
 
-  }, [activeTab, currentState, selectedEmotion, selectedState1, selectedState2, data, margin, width, height]);
+  }, [activeTab, currentState, selectedEmotion, selectedState1, selectedState2, data, margin, width, height, timeSeriesData, loadingTimeSeries]);
 
   return (
     <div>
@@ -235,7 +305,10 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
           <select
             className="state-dropdown"
             value={currentState}
-            onChange={(e) => setCurrentState(e.target.value)}
+            onChange={(e) => {
+              setCurrentState(e.target.value);
+              fetchTimeSeriesData(e.target.value);
+            }}
           >
             {allStates.map((state) => (
               <option key={state} value={state}>
