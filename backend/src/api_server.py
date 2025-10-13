@@ -589,7 +589,6 @@ def get_state_time_series_data(state_code):
             WHERE state_code = %s
             GROUP BY DATE(timestamp)
             ORDER BY date DESC
-            LIMIT 365
         """, (state_code,))
         
         time_series_data = []
@@ -613,6 +612,55 @@ def get_state_time_series_data(state_code):
         
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get time series data for {state_code}: {e}")
+        return jsonify({"error": "Time series query failed"}), 500
+
+@app.route('/timeSeriesData/emotion/<emotion>')
+def get_emotion_time_series_data(emotion):
+    """Get time series data for a specific emotion across all states"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion: {emotion}. Valid emotions: {valid_emotions}"}), 400
+        
+        # Get daily emotion data for the specific emotion across all states
+        query = f"""
+        SELECT 
+            state_code,
+            DATE(created_at) as date,
+            AVG({emotion}) as emotion_value
+        FROM tweets 
+        WHERE {emotion} IS NOT NULL
+        GROUP BY state_code, DATE(created_at)
+        ORDER BY state_code, date
+        """
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        
+        # Convert to list of dictionaries
+        data = []
+        for row in results:
+            data.append({
+                'state': row[0],
+                'date': row[1].isoformat(),
+                emotion: float(row[2]) if row[2] is not None else 0.0
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        print(f"Retrieved {len(data)} time series records for emotion {emotion}")
+        return jsonify(data)
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to get time series data for emotion {emotion}: {e}")
         return jsonify({"error": "Time series query failed"}), 500
 
 @app.route('/timeSeriesData/compare/<state1>/<state2>')
