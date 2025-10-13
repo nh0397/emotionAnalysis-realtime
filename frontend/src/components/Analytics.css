@@ -15,7 +15,7 @@
 }
 
 .header p {
-  color: #657786;
+  color: #cccccc;
   font-size: 16px;
 }
 
@@ -114,12 +114,12 @@
 
 .name {
   flex: 1;
-  color: #14171a;
+  color: #ffffff;
   font-weight: 500;
 }
 
 .count {
-  color: #657786;
+  color: #cccccc;
   font-size: 14px;
 }
 
@@ -154,7 +154,7 @@
 
 .hour-label {
   font-size: 11px;
-  color: #657786;
+  color: #cccccc;
   margin-top: 5px;
   writing-mode: vertical-rl;
   text-orientation: mixed;
@@ -170,7 +170,7 @@
 }
 
 .footer p {
-  color: #657786;
+  color: #cccccc;
   font-size: 14px;
   margin: 0;
 }

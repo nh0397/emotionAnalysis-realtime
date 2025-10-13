@@ -668,6 +668,116 @@ def get_comparison_time_series_data(state1, state2):
         logger.error("API_SERVER", f"Failed to get comparison data for {state1} vs {state2}: {e}")
         return jsonify({"error": "Comparison query failed"}), 500
 
+@app.route('/emotionAcrossStates/<emotion>')
+def get_emotion_across_states(emotion):
+    """Get one emotion across all states for comparison"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion. Must be one of: {valid_emotions}"}), 400
+        
+        # Get average emotion value for each state
+        cursor.execute(f"""
+            SELECT 
+                state_code,
+                AVG({emotion}) as avg_{emotion},
+                COUNT(*) as tweet_count
+            FROM tweets 
+            GROUP BY state_code
+            ORDER BY avg_{emotion} DESC
+        """)
+        
+        emotion_data = []
+        for row in cursor.fetchall():
+            emotion_data.append({
+                "state": row[0],
+                "emotion": emotion,
+                "value": round(row[1] or 0.0, 3),
+                "tweet_count": row[2]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "emotion": emotion,
+            "data": emotion_data,
+            "total_states": len(emotion_data)
+        })
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to get {emotion} across states: {e}")
+        return jsonify({"error": f"Failed to get {emotion} across states"}), 500
+
+@app.route('/compareStates/<state1>/<state2>/<emotion>')
+def compare_two_states_emotion(state1, state2, emotion):
+    """Compare one emotion between two specific states"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion. Must be one of: {valid_emotions}"}), 400
+        
+        # Get emotion data for both states
+        cursor.execute(f"""
+            SELECT 
+                state_code,
+                AVG({emotion}) as avg_{emotion},
+                MIN({emotion}) as min_{emotion},
+                MAX({emotion}) as max_{emotion},
+                COUNT(*) as tweet_count
+            FROM tweets 
+            WHERE state_code IN (%s, %s)
+            GROUP BY state_code
+            ORDER BY state_code
+        """, (state1, state2))
+        
+        comparison_data = []
+        for row in cursor.fetchall():
+            comparison_data.append({
+                "state": row[0],
+                "emotion": emotion,
+                "average": round(row[1] or 0.0, 3),
+                "minimum": round(row[2] or 0.0, 3),
+                "maximum": round(row[3] or 0.0, 3),
+                "tweet_count": row[4]
+            })
+        
+        # Calculate difference
+        if len(comparison_data) == 2:
+            state1_avg = comparison_data[0]['average'] if comparison_data[0]['state'] == state1 else comparison_data[1]['average']
+            state2_avg = comparison_data[1]['average'] if comparison_data[1]['state'] == state2 else comparison_data[0]['average']
+            difference = round(state1_avg - state2_avg, 3)
+        else:
+            difference = 0
+        
+        conn.close()
+        
+        return jsonify({
+            "emotion": emotion,
+            "state1": state1,
+            "state2": state2,
+            "comparison": comparison_data,
+            "difference": difference,
+            "higher_state": state1 if difference > 0 else state2 if difference < 0 else "equal"
+        })
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to compare {state1} vs {state2} for {emotion}: {e}")
+        return jsonify({"error": f"Failed to compare states for {emotion}"}), 500
+
 if __name__ == "__main__":
     logger.system_event("API_SERVER_STARTING", "Port 9000")
     app.run(host='0.0.0.0', port=9000, debug=True, threaded=True)

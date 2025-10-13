@@ -15,7 +15,7 @@
 }
 
 .header p {
-  color: #657786;
+  color: #cccccc;
   font-size: 16px;
 }
 
@@ -108,7 +108,7 @@
 
 .username {
   font-weight: bold;
-  color: #1da1f2;
+  color: #ffffff;
 }
 
 .location {
@@ -120,7 +120,7 @@
 }
 
 .timestamp {
-  color: #657786;
+  color: #cccccc;
   font-size: 12px;
 }
 
@@ -131,12 +131,13 @@
 .tweet-content p {
   font-size: 16px;
   line-height: 1.5;
-  color: #14171a;
+  color: #ffffff;
   margin: 0;
 }
 
 .tweet-meta {
   margin-bottom: 15px;
+  color: #cccccc;
 }
 
 .context {
@@ -152,7 +153,7 @@
   display: flex;
   gap: 20px;
   font-size: 14px;
-  color: #657786;
+  color: #cccccc;
 }
 
 .stat {
@@ -216,7 +217,7 @@
 
 .page-info {
   font-size: 14px;
-  color: #657786;
+  color: #cccccc;
   font-weight: 500;
 }
 
