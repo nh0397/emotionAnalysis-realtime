@@ -407,6 +407,122 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
       .style("stroke", "rgba(255, 255, 255, 0.1)")
       .style("stroke-dasharray", "2,2");
 
+    // Right-side stacked bar chart for tweet distribution (neutral/positive/negative)
+    const sideChartWidth = 220;
+    const rightBarsX = width + 20;
+
+    const dataWithSums = processedData.map(d => ({
+      ...d,
+      senti_neutral_count: parseInt(d.senti_neutral_count || 0, 10),
+      senti_positive_count: parseInt(d.senti_positive_count || 0, 10),
+      senti_negative_count: parseInt(d.senti_negative_count || 0, 10),
+    })).map(d => ({
+      ...d,
+      sum: (d.senti_neutral_count || 0) + (d.senti_positive_count || 0) + (d.senti_negative_count || 0)
+    }));
+
+    const maxSum = d3.max(dataWithSums, d => d.sum) || 1;
+    const widthScale = d3.scaleSqrt().domain([0, maxSum]).range([30, sideChartWidth - 20]);
+    const colors = { neutral: '#5C85FF', positive: '#85e085', negative: '#FF8080' };
+
+    // Tooltip for side bars
+    const barTooltip = d3.select('body')
+      .selectAll('.tweet-dist-tooltip')
+      .data([null])
+      .join('div')
+      .attr('class', 'tweet-dist-tooltip')
+      .style('position', 'absolute')
+      .style('padding', '10px 12px')
+      .style('background', 'rgba(0,0,0,0.9)')
+      .style('color', '#fff')
+      .style('border', '1px solid rgba(255,255,255,0.2)')
+      .style('border-radius', '6px')
+      .style('font-size', '12px')
+      .style('pointer-events', 'none')
+      .style('z-index', 1000)
+      .style('opacity', 0);
+
+    const drawSideBars = (container, alignRight = true) => {
+      const sentiments = ['neutral', 'positive', 'negative'];
+      sentiments.forEach((sentiment, index) => {
+        container.selectAll(`.bar-${sentiment}`)
+          .data(dataWithSums)
+          .join('rect')
+          .attr('class', `bar-${sentiment}`)
+          .attr('y', d => scales.yScale(d.state) + (scales.yScale.bandwidth() - 10) / 2)
+          .attr('height', 10)
+          .attr('fill', colors[sentiment])
+          .attr('opacity', 0.8)
+          .on('mouseover', (event, d) => {
+            barTooltip.style('opacity', 1);
+          })
+          .on('mousemove', (event, d) => {
+            const html = `<strong>${d.state}</strong><br/>`
+              + `Positive: ${d.senti_positive_count?.toLocaleString?.() || d.senti_positive_count || 0}<br/>`
+              + `Negative: ${d.senti_negative_count?.toLocaleString?.() || d.senti_negative_count || 0}<br/>`
+              + `Neutral: ${d.senti_neutral_count?.toLocaleString?.() || d.senti_neutral_count || 0}`;
+            barTooltip
+              .html(html)
+              .style('left', (event.pageX + 12) + 'px')
+              .style('top', (event.pageY - 10) + 'px');
+          })
+          .on('mouseout', () => {
+            barTooltip.style('opacity', 0);
+          })
+          .attr('x', d => {
+            const counts = {
+              neutral: d.senti_neutral_count || 0,
+              positive: d.senti_positive_count || 0,
+              negative: d.senti_negative_count || 0,
+            };
+            const prevSentiments = sentiments.slice(0, index);
+            const prevWidth = d3.sum(prevSentiments.map(s => widthScale(counts[s])));
+            const thisWidth = widthScale(counts[sentiment]);
+            if (alignRight) {
+              return sideChartWidth - thisWidth - prevWidth;
+            }
+            return prevWidth;
+          })
+          .attr('width', d => {
+            const counts = {
+              neutral: d.senti_neutral_count || 0,
+              positive: d.senti_positive_count || 0,
+              negative: d.senti_negative_count || 0,
+            };
+            return widthScale(counts[sentiment]);
+          });
+      });
+    };
+
+    // Right stacked bars (left-aligned)
+    const rightBars = g.append('g')
+      .attr('transform', `translate(${rightBarsX}, 0)`);
+    drawSideBars(rightBars, false);
+
+    // Legend for tweet distribution (inside right bar area, top-right)
+    const legendItems = [
+      { key: 'neutral', label: 'Neutral', color: colors.neutral },
+      { key: 'positive', label: 'Positive', color: colors.positive },
+      { key: 'negative', label: 'Negative', color: colors.negative },
+    ];
+    const legend = rightBars.append('g')
+      .attr('transform', `translate(${Math.max(0, sideChartWidth - 200)}, ${-14})`);
+    const li = legend.selectAll('g')
+      .data(legendItems)
+      .join('g')
+      .attr('transform', (d, i) => `translate(${i * 65}, 0)`);
+    li.append('rect')
+      .attr('width', 10)
+      .attr('height', 10)
+      .attr('fill', d => d.color)
+      .attr('opacity', 0.9);
+    li.append('text')
+      .attr('x', 14)
+      .attr('y', 9)
+      .style('fill', '#ffffff')
+      .style('font-size', '11px')
+      .text(d => d.label);
+
     // Add tornado chart if two states are selected
     if (selectedLines.length === 2) {
       const state1Data = processedData.find(d => d.state === selectedLines[0]);
