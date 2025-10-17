@@ -18,6 +18,10 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
   const [selectedState2, setSelectedState2] = useState(allStates[1]);
   const [timeSeriesData, setTimeSeriesData] = useState([]);
   const [loadingTimeSeries, setLoadingTimeSeries] = useState(false);
+  const [emotionTimeSeriesData, setEmotionTimeSeriesData] = useState([]);
+  const [loadingEmotionTimeSeries, setLoadingEmotionTimeSeries] = useState(false);
+  const [comparisonData, setComparisonData] = useState([]);
+  const [loadingComparison, setLoadingComparison] = useState(false);
 
   // Function to fetch time series data for a state
   const fetchTimeSeriesData = async (stateCode) => {
@@ -47,6 +51,62 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
     }
   };
 
+  // Function to fetch emotion time series data across all states
+  const fetchEmotionTimeSeriesData = async (emotion) => {
+    if (!emotion) return;
+    
+    setLoadingEmotionTimeSeries(true);
+    try {
+      console.log(`🕒 Fetching ${emotion} time series data across all states...`);
+      const response = await fetch(`http://localhost:9000/timeSeriesData/emotion/${emotion}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ API Error: ${response.status} - ${errorText}`);
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
+      }
+      
+      const fetchedData = await response.json();
+      console.log(`✅ ${emotion} time series data loaded:`, fetchedData);
+      
+      // Store the fetched data in state
+      setEmotionTimeSeriesData(fetchedData);
+      
+    } catch (error) {
+      console.error(`❌ Error fetching ${emotion} time series data:`, error);
+    } finally {
+      setLoadingEmotionTimeSeries(false);
+    }
+  };
+
+  // Function to fetch comparison data for two states on a specific emotion
+  const fetchComparisonData = async (state1, state2, emotion) => {
+    if (!state1 || !state2 || !emotion) return;
+    
+    setLoadingComparison(true);
+    try {
+      console.log(`🕒 Fetching comparison data for ${state1} vs ${state2} on ${emotion}...`);
+      const response = await fetch(`http://localhost:9000/timeSeriesData/compare/${state1}/${state2}/${emotion}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ API Error: ${response.status} - ${errorText}`);
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
+      }
+      
+      const fetchedData = await response.json();
+      console.log(`✅ Comparison data loaded for ${state1} vs ${state2} on ${emotion}:`, fetchedData);
+      
+      // Store the fetched data in state
+      setComparisonData(fetchedData);
+      
+    } catch (error) {
+      console.error(`❌ Error fetching comparison data:`, error);
+    } finally {
+      setLoadingComparison(false);
+    }
+  };
+
   // Auto-fetch time series data when currentState changes
   useEffect(() => {
     if (currentState) {
@@ -54,19 +114,35 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
     }
   }, [currentState]);
 
+  // Auto-fetch emotion time series data when selectedEmotion changes
+  useEffect(() => {
+    if (selectedEmotion && activeTab === 2) {
+      fetchEmotionTimeSeriesData(selectedEmotion);
+    }
+  }, [selectedEmotion, activeTab]);
+
+  // Auto-fetch comparison data when Tab 3 parameters change
+  useEffect(() => {
+    if (selectedState1 && selectedState2 && selectedEmotion && activeTab === 3) {
+      fetchComparisonData(selectedState1, selectedState2, selectedEmotion);
+    }
+  }, [selectedState1, selectedState2, selectedEmotion, activeTab]);
+
   useEffect(() => {
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
     // Show loading state
-    if (loadingTimeSeries) {
+    if (loadingTimeSeries || loadingEmotionTimeSeries || loadingComparison) {
       svg.append("text")
         .attr("x", (width + margin.left + margin.right) / 2)
         .attr("y", (height + margin.top + margin.bottom) / 2)
         .attr("text-anchor", "middle")
         .style("fill", "#ffffff")
         .style("font-size", "16px")
-        .text("Loading time series data...");
+        .text(loadingTimeSeries ? "Loading time series data..." : 
+              loadingEmotionTimeSeries ? "Loading emotion data..." : 
+              "Loading comparison data...");
       return;
     }
 
@@ -198,7 +274,11 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
     chartItems.forEach((item, index) => {
       const chartData = isTab1
         ? timeSeriesData.length > 0 ? timeSeriesData : data.filter(d => d.state === currentState)
-        : data.filter(d => d.state === item);
+        : (activeTab === 2 
+          ? (emotionTimeSeriesData.length > 0 ? emotionTimeSeriesData.filter(d => d.state === item) : [])
+          : (activeTab === 3 
+            ? (comparisonData.length > 0 ? comparisonData.filter(d => d.state === item) : [])
+            : data.filter(d => d.state === item)));
 
       // Debug logging
       console.log(`🔍 Chart rendering for ${currentState}:`, {
@@ -273,7 +353,7 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
 
     return () => tooltip.remove();
 
-  }, [activeTab, currentState, selectedEmotion, selectedState1, selectedState2, data, margin, width, height, timeSeriesData, loadingTimeSeries]);
+  }, [activeTab, currentState, selectedEmotion, selectedState1, selectedState2, data, margin, width, height, timeSeriesData, loadingTimeSeries, emotionTimeSeriesData, loadingEmotionTimeSeries, comparisonData, loadingComparison]);
 
   return (
     <div>
@@ -287,13 +367,19 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         </button>
         <button
           className={`tab-button ${activeTab === 2 ? "active" : ""}`}
-          onClick={() => setActiveTab(2)}
+          onClick={() => {
+            setActiveTab(2);
+            fetchEmotionTimeSeriesData(selectedEmotion);
+          }}
         >
           One emotion across all states
         </button>
         <button
           className={`tab-button ${activeTab === 3 ? "active" : ""}`}
-          onClick={() => setActiveTab(3)}
+          onClick={() => {
+            setActiveTab(3);
+            fetchComparisonData(selectedState1, selectedState2, selectedEmotion);
+          }}
         >
           Two state comparison
         </button>
@@ -333,7 +419,10 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
           <select
             className="state-dropdown"
             value={selectedEmotion}
-            onChange={(e) => setSelectedEmotion(e.target.value)}
+            onChange={(e) => {
+              setSelectedEmotion(e.target.value);
+              fetchEmotionTimeSeriesData(e.target.value);
+            }}
           >
             {emotions.map((emotion) => (
               <option key={emotion} value={emotion}>
@@ -359,7 +448,10 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
             <select
               className="state-dropdown"
               value={selectedState1}
-              onChange={(e) => setSelectedState1(e.target.value)}
+              onChange={(e) => {
+                setSelectedState1(e.target.value);
+                fetchComparisonData(e.target.value, selectedState2, selectedEmotion);
+              }}
             >
               {allStates.map((state) => (
                 <option key={state} value={state}>
@@ -370,7 +462,10 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
             <select
               className="state-dropdown"
               value={selectedState2}
-              onChange={(e) => setSelectedState2(e.target.value)}
+              onChange={(e) => {
+                setSelectedState2(e.target.value);
+                fetchComparisonData(selectedState1, e.target.value, selectedEmotion);
+              }}
             >
               {allStates.map((state) => (
                 <option key={state} value={state}>
@@ -381,7 +476,10 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
             <select
             className="state-dropdown"
             value={selectedEmotion}
-            onChange={(e) => setSelectedEmotion(e.target.value)}
+            onChange={(e) => {
+              setSelectedEmotion(e.target.value);
+              fetchComparisonData(selectedState1, selectedState2, e.target.value);
+            }}
             style={{ marginLeft: "auto" }}
           >
             {emotions.map((emotion) => (

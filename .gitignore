@@ -102,6 +102,21 @@ MANIFEST
 # Client folder (temporary development)
 client/
 
+# Emotion Analysis Evaluation Files
+backend/src/evaluation/
+backend/src/run_thesis_defense.py
+backend/src/EMOTION_ANALYSIS_METHODOLOGY.md
+backend/src/README_METHODOLOGY.md
+backend/src/emotion_datasets/
+backend/src/model_comparison_results_*.json
+backend/src/model_comparison_summary_*.csv
+backend/src/comprehensive_evaluation_*.json
+backend/src/evaluation_summary_*.csv
+backend/src/dataset_evaluation_*.json
+backend/src/model_performance_comparison.png
+backend/src/speed_vs_accuracy_analysis.png
+backend/src/detailed_model_performance.csv
+
 # Misc
 .DS_Store
 .env.local

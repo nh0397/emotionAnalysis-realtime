@@ -14,11 +14,29 @@ React Frontend (Multi-page UI)
 
 ### Data Flow:
 1. **Tweet Agent** generates realistic tweets every 10 seconds using Ollama LLM
-2. **Custom NLP Pipeline** analyzes emotions using PyTorch transformers
+2. **Custom NLP Pipeline** analyzes emotions using PyTorch transformers with proper sentiment/emotion separation
 3. **Kafka Topic** receives and distributes tweets for scalability
-4. **Database Writer** stores tweets in PostgreSQL with full schema
+4. **Database Writer** stores tweets in PostgreSQL with optimized schema (3-way sentiment + 8-way emotions)
 5. **API Server** streams real-time data via Server-Sent Events (SSE)
 6. **React Frontend** displays live tweets, historical data, and analytics
+
+## Database Schema
+
+The system uses a properly designed PostgreSQL schema that separates sentiment from emotions:
+
+### Sentiment (3-way classification)
+- `sentiment`: VARCHAR - 'positive', 'negative', 'neutral'
+- `sentiment_confidence`: FLOAT - Confidence score for sentiment
+
+### Emotions (8-way classification)
+- `anger`, `fear`, `sadness`, `surprise`, `joy`, `anticipation`, `trust`, `disgust`: FLOAT
+- `dominant_emotion`: VARCHAR - The strongest emotion detected
+- `emotion_confidence`: FLOAT - Confidence score for dominant emotion
+
+### Performance Features
+- **Automatic aggregation** with triggers for real-time state-level metrics
+- **Optimized indexes** for fast queries on timestamp, state, sentiment, and emotions
+- **Real-time updates** via PostgreSQL triggers
 
 ## Project Structure
 
@@ -44,7 +62,7 @@ Final Project/
 │   │   └── nlp_pipeline/            # Custom PyTorch emotion analysis
 │   │       ├── emotion_analyzer.py      # Main analyzer class
 │   │       ├── text_preprocessor.py     # Text cleaning
-│   │       └── emotion_mapper.py        # 10-emotion mapping
+│   │       └── emotion_mapper.py        # Sentiment/emotion separation
 │   ├── requirements.txt
 │   └── realtime/                    # Python virtual environment
 ├── docker-compose.yml              # PostgreSQL, Kafka, Zookeeper

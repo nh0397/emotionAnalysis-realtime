@@ -246,20 +246,39 @@ class CustomEmotionAnalyzer:
             # Get sentiment predictions
             sentiment_prediction = self._predict_sentiment_direct(cleaned_text)
             
-            # Map to 10-emotion schema
-            emotion_scores = self.emotion_mapper.map_roberta_emotions(emotion_predictions)
-            sentiment_scores = self.emotion_mapper.map_sentiment_to_emotions(sentiment_prediction)
+            # Extract sentiment (3-way classification)
+            sentiment, sentiment_confidence = self.emotion_mapper.extract_sentiment(sentiment_prediction)
             
-            # Combine emotion and sentiment
-            combined_scores = self.emotion_mapper.combine_emotion_sources(
-                emotion_scores, sentiment_scores
-            )
+            # Extract emotions (8-way classification)
+            emotion_scores = self.emotion_mapper.extract_emotions(emotion_predictions)
             
-            # Normalize scores
-            normalized_scores = self.emotion_mapper.normalize_scores(combined_scores)
+            # Get dominant emotion
+            dominant_emotion, emotion_confidence = self.emotion_mapper.get_dominant_emotion(emotion_scores)
             
-            # Format for visualization compatibility
-            result = self.emotion_mapper.format_for_visualization(normalized_scores)
+            # Create new schema output
+            result = {
+                # Sentiment (3-way)
+                'sentiment': sentiment,
+                'sentiment_confidence': round(sentiment_confidence, 4),
+                
+                # Emotions (8-way)
+                'anger': round(emotion_scores.get('anger', 0.0), 4),
+                'fear': round(emotion_scores.get('fear', 0.0), 4),
+                'sadness': round(emotion_scores.get('sadness', 0.0), 4),
+                'surprise': round(emotion_scores.get('surprise', 0.0), 4),
+                'joy': round(emotion_scores.get('joy', 0.0), 4),
+                'anticipation': round(emotion_scores.get('anticipation', 0.0), 4),
+                'trust': round(emotion_scores.get('trust', 0.0), 4),
+                'disgust': round(emotion_scores.get('disgust', 0.0), 4),
+                
+                # Analysis results
+                'dominant_emotion': dominant_emotion,
+                'emotion_confidence': round(emotion_confidence, 4),
+                
+                # Legacy compatibility (for existing APIs)
+                'compound': round(sentiment_confidence if sentiment == 'positive' else -sentiment_confidence, 4),
+                'confidence': round(emotion_confidence, 4)
+            }
             
             # Add metadata
             result['processing_time'] = time.time() - start_time

@@ -153,20 +153,24 @@ class DatabaseConsumer:
             views = int(tweet.get('views', 0))
             
             # Convert emotion scores to floats (CRITICAL!)
+            # Extract sentiment (3-way classification)
+            sentiment = str(tweet.get('sentiment', 'neutral'))
+            sentiment_confidence = float(tweet.get('sentiment_confidence', 0.0))
+            
+            # Extract emotion scores (8-way classification)
             anger = float(tweet.get('anger', 0.0))
             fear = float(tweet.get('fear', 0.0))
-            positive = float(tweet.get('positive', 0.0))
             sadness = float(tweet.get('sadness', 0.0))
             surprise = float(tweet.get('surprise', 0.0))
             joy = float(tweet.get('joy', 0.0))
             anticipation = float(tweet.get('anticipation', 0.0))
             trust = float(tweet.get('trust', 0.0))
-            negative = float(tweet.get('negative', 0.0))
             disgust = float(tweet.get('disgust', 0.0))
-            compound = float(tweet.get('compound', 0.0))
-            confidence = float(tweet.get('confidence', 0.0))
             
-            dominant_emotion = str(tweet.get('dominant_emotion', 'neutral'))
+            # Analysis results
+            dominant_emotion = str(tweet.get('dominant_emotion', 'joy'))
+            emotion_confidence = float(tweet.get('emotion_confidence', 0.0))
+            compound = float(tweet.get('compound', 0.0))
             
             # CREATE THE ACTUAL SQL STRING to see exactly what we're executing
             sql_query = f"""
@@ -174,16 +178,18 @@ class DatabaseConsumer:
                     tweet_id, username, raw_text, timestamp, 
                     state_code, state_name, context,
                     likes, retweets, replies, views,
-                    anger, fear, positive, sadness, surprise, joy, 
-                    anticipation, trust, negative, disgust, 
-                    compound, dominant_emotion, confidence
+                    sentiment, sentiment_confidence,
+                    anger, fear, sadness, surprise, joy, 
+                    anticipation, trust, disgust,
+                    dominant_emotion, emotion_confidence, compound
                 ) VALUES (
                     {tweet_id}, '{username}', '{raw_text.replace("'", "''")}', '{timestamp}', 
                     '{state_code}', '{state_name}', '{context}',
                     {likes}, {retweets}, {replies}, {views},
-                    {anger}, {fear}, {positive}, {sadness}, {surprise}, {joy}, 
-                    {anticipation}, {trust}, {negative}, {disgust}, 
-                    {compound}, '{dominant_emotion}', {confidence}
+                    '{sentiment}', {sentiment_confidence},
+                    {anger}, {fear}, {sadness}, {surprise}, {joy}, 
+                    {anticipation}, {trust}, {disgust}, 
+                    '{dominant_emotion}', {emotion_confidence}, {compound}
                 )
             """
             

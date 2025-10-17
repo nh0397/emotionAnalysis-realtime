@@ -11,7 +11,13 @@ class EmotionMapper:
     def __init__(self):
         """Initialize emotion mapper with mappings for different models"""
         
-        # Your existing 10-emotion schema from the visualization
+        # Updated schema: separate sentiment from emotions
+        self.sentiment_categories = ['positive', 'negative', 'neutral']
+        self.emotion_categories = [
+            'anger', 'fear', 'sadness', 'surprise', 'joy', 
+            'anticipation', 'trust', 'disgust'
+        ]
+        # Legacy support for old schema
         self.target_emotions = [
             'anger', 'fear', 'positive', 'sadness', 'surprise',
             'joy', 'anticipation', 'trust', 'negative', 'disgust'
@@ -245,6 +251,78 @@ class EmotionMapper:
         }
         
         return formatted_output
+    
+    def extract_sentiment(self, sentiment_prediction: Dict[str, Any]) -> Tuple[str, float]:
+        """
+        Extract sentiment classification from sentiment model output
+        
+        Args:
+            sentiment_prediction: Output from sentiment analysis model
+            
+        Returns:
+            Tuple of (sentiment_label, confidence)
+        """
+        label = sentiment_prediction.get('label', '').lower()
+        confidence = sentiment_prediction.get('score', 0.0)
+        
+        # Map sentiment model outputs to our 3-way classification
+        if 'positive' in label or 'pos' in label:
+            return 'positive', confidence
+        elif 'negative' in label or 'neg' in label:
+            return 'negative', confidence
+        else:
+            return 'neutral', confidence
+    
+    def extract_emotions(self, emotion_predictions: List[Dict[str, Any]]) -> Dict[str, float]:
+        """
+        Extract emotion scores from emotion model output
+        
+        Args:
+            emotion_predictions: List of emotion predictions from emotion model
+            
+        Returns:
+            Dictionary with emotion scores
+        """
+        emotion_scores = {emotion: 0.0 for emotion in self.emotion_categories}
+        
+        for prediction in emotion_predictions:
+            label = prediction.get('label', '').lower()
+            score = prediction.get('score', 0.0)
+            
+            # Map to our emotion categories
+            if label in self.emotion_categories:
+                emotion_scores[label] = score
+            else:
+                # Handle common mappings
+                mappings = {
+                    'disappointment': 'sadness',
+                    'excitement': 'joy',
+                    'nervousness': 'fear',
+                    'optimism': 'joy',
+                    'pessimism': 'sadness'
+                }
+                if label in mappings:
+                    emotion_scores[mappings[label]] = score
+        
+        return emotion_scores
+    
+    def get_dominant_emotion(self, emotion_scores: Dict[str, float]) -> Tuple[str, float]:
+        """
+        Get the dominant emotion from emotion scores
+        
+        Args:
+            emotion_scores: Dictionary of emotion scores
+            
+        Returns:
+            Tuple of (dominant_emotion, confidence)
+        """
+        if not emotion_scores:
+            return 'joy', 0.0
+        
+        dominant = max(emotion_scores, key=emotion_scores.get)
+        confidence = emotion_scores[dominant]
+        
+        return dominant, confidence
 
 
 # Example usage and testing

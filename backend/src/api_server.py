@@ -71,7 +71,9 @@ def root():
             "health": "/health",
             "visualization": {
                 "dot-plot-data": "/data",
-                "time-series-data": "/timeSeriesData"
+                "time-series-data": "/timeSeriesData",
+                "emotion-time-series": "/timeSeriesData/emotion/{emotion}",
+                "state-comparison": "/timeSeriesData/compare/{state1}/{state2}/{emotion}"
             }
         }
     })
@@ -300,7 +302,8 @@ def stream_aggregated_emotions():
                 SELECT 
                     state_code,
                     anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
-                    positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg,
+                    anticipation_avg, trust_avg, disgust_avg,
+                    sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
                     tweet_count, last_updated
                 FROM emotion_aggregates 
                 ORDER BY state_code
@@ -312,18 +315,21 @@ def stream_aggregated_emotions():
             for row in rows:
                 initial_data.append({
                     'state': row[0],
+                    # Emotions (8-way)
                     'anger': float(row[1]) if row[1] is not None else 0.0,
                     'joy': float(row[2]) if row[2] is not None else 0.0,
                     'fear': float(row[3]) if row[3] is not None else 0.0,
                     'sadness': float(row[4]) if row[4] is not None else 0.0,
                     'surprise': float(row[5]) if row[5] is not None else 0.0,
-                    'positive': float(row[6]) if row[6] is not None else 0.0,
-                    'negative': float(row[7]) if row[7] is not None else 0.0,
-                    'anticipation': float(row[8]) if row[8] is not None else 0.0,
-                    'trust': float(row[9]) if row[9] is not None else 0.0,
-                    'disgust': float(row[10]) if row[10] is not None else 0.0,
-                    'tweet_count': row[11],
-                    'last_updated': row[12].isoformat() if row[12] else None
+                    'anticipation': float(row[6]) if row[6] is not None else 0.0,
+                    'trust': float(row[7]) if row[7] is not None else 0.0,
+                    'disgust': float(row[8]) if row[8] is not None else 0.0,
+                    # Sentiment counts (3-way)
+                    'sentiment_positive_count': row[9] if row[9] is not None else 0,
+                    'sentiment_negative_count': row[10] if row[10] is not None else 0,
+                    'sentiment_neutral_count': row[11] if row[11] is not None else 0,
+                    'tweet_count': row[12],
+                    'last_updated': row[13].isoformat() if row[13] else None
                 })
             
             # Send initial data
@@ -336,16 +342,17 @@ def stream_aggregated_emotions():
                 current_time = time.time()
                 
                 # Check for updates in the last 10 seconds
-                cursor.execute("""
-                    SELECT 
-                        state_code,
-                        anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
-                        positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg,
-                        tweet_count, last_updated
-                    FROM emotion_aggregates 
-                    WHERE last_updated > %s
-                    ORDER BY state_code
-                """, (datetime.datetime.fromtimestamp(last_check - 10),))
+                    cursor.execute("""
+                        SELECT 
+                            state_code,
+                            anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                            anticipation_avg, trust_avg, disgust_avg,
+                            sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
+                            tweet_count, last_updated
+                        FROM emotion_aggregates 
+                        WHERE last_updated > %s
+                        ORDER BY state_code
+                    """, (datetime.datetime.fromtimestamp(last_check - 10),))
                 
                 updated_rows = cursor.fetchall()
                 if updated_rows:
@@ -353,18 +360,21 @@ def stream_aggregated_emotions():
                     for row in updated_rows:
                         updated_data.append({
                             'state': row[0],
+                            # Emotions (8-way)
                             'anger': float(row[1]) if row[1] is not None else 0.0,
                             'joy': float(row[2]) if row[2] is not None else 0.0,
                             'fear': float(row[3]) if row[3] is not None else 0.0,
                             'sadness': float(row[4]) if row[4] is not None else 0.0,
                             'surprise': float(row[5]) if row[5] is not None else 0.0,
-                            'positive': float(row[6]) if row[6] is not None else 0.0,
-                            'negative': float(row[7]) if row[7] is not None else 0.0,
-                            'anticipation': float(row[8]) if row[8] is not None else 0.0,
-                            'trust': float(row[9]) if row[9] is not None else 0.0,
-                            'disgust': float(row[10]) if row[10] is not None else 0.0,
-                            'tweet_count': row[11],
-                            'last_updated': row[12].isoformat() if row[12] else None
+                            'anticipation': float(row[6]) if row[6] is not None else 0.0,
+                            'trust': float(row[7]) if row[7] is not None else 0.0,
+                            'disgust': float(row[8]) if row[8] is not None else 0.0,
+                            # Sentiment counts (3-way)
+                            'sentiment_positive_count': row[9] if row[9] is not None else 0,
+                            'sentiment_negative_count': row[10] if row[10] is not None else 0,
+                            'sentiment_neutral_count': row[11] if row[11] is not None else 0,
+                            'tweet_count': row[12],
+                            'last_updated': row[13].isoformat() if row[13] else None
                         })
                     
                     yield f"data: {json.dumps({'type': 'update', 'data': updated_data})}\n\n"
@@ -477,35 +487,29 @@ def get_dot_plot_data():
                 COUNT(*) as total_tweets,
                 AVG(anger) as anger,
                 AVG(fear) as fear,
-                AVG(positive) as positive,
                 AVG(sadness) as sadness,
                 AVG(surprise) as surprise,
                 AVG(joy) as joy,
                 AVG(anticipation) as anticipation,
                 AVG(trust) as trust,
-                AVG(negative) as negative,
                 AVG(disgust) as disgust,
+                COUNT(CASE WHEN sentiment = 'positive' THEN 1 END) as sentiment_positive_count,
+                COUNT(CASE WHEN sentiment = 'negative' THEN 1 END) as sentiment_negative_count,
+                COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END) as sentiment_neutral_count,
                 COUNT(CASE WHEN anger > 0 THEN 1 END) as anger_count,
                 COUNT(CASE WHEN fear > 0 THEN 1 END) as fear_count,
-                COUNT(CASE WHEN positive > 0 THEN 1 END) as positive_count,
                 COUNT(CASE WHEN sadness > 0 THEN 1 END) as sadness_count,
                 COUNT(CASE WHEN surprise > 0 THEN 1 END) as surprise_count,
                 COUNT(CASE WHEN joy > 0 THEN 1 END) as joy_count,
                 COUNT(CASE WHEN anticipation > 0 THEN 1 END) as anticipation_count,
                 COUNT(CASE WHEN trust > 0 THEN 1 END) as trust_count,
-                COUNT(CASE WHEN negative > 0 THEN 1 END) as negative_count,
                 COUNT(CASE WHEN disgust > 0 THEN 1 END) as disgust_count,
                 SUM(anger) as anger_sum,
                 SUM(anticipation) as anticipation_sum,
                 SUM(disgust) as disgust_sum,
                 SUM(fear) as fear_sum,
                 SUM(joy) as joy_sum,
-                SUM(negative) as negative_sum,
-                SUM(positive) as positive_sum,
                 SUM(sadness) as sadness_sum,
-                COUNT(CASE WHEN compound < -0.05 THEN 1 END) as senti_negative_count,
-                COUNT(CASE WHEN compound >= -0.05 AND compound <= 0.05 THEN 1 END) as senti_neutral_count,
-                COUNT(CASE WHEN compound > 0.05 THEN 1 END) as senti_positive_count,
                 SUM(surprise) as surprise_sum,
                 SUM(trust) as trust_sum
             FROM tweets 
@@ -519,39 +523,37 @@ def get_dot_plot_data():
             states_data.append({
                 "": i,  # Index column like in CSV
                 "state": row[0],
-                "anger": round(row[2] or 0.0, 17),  # High precision like CSV
+                # Emotions (8-way)
+                "anger": round(row[2] or 0.0, 17),
                 "fear": round(row[3] or 0.0, 17),
-                "positive": round(row[4] or 0.0, 17),
-                "sadness": round(row[5] or 0.0, 17),
-                "surprise": round(row[6] or 0.0, 17),
-                "joy": round(row[7] or 0.0, 17),
-                "anticipation": round(row[8] or 0.0, 17),
-                "trust": round(row[9] or 0.0, 17),
-                "negative": round(row[10] or 0.0, 17),
-                "disgust": round(row[11] or 0.0, 17),
-                "anger_count": row[12] or 0,
-                "fear_count": row[13] or 0,
-                "positive_count": row[14] or 0,
+                "sadness": round(row[4] or 0.0, 17),
+                "surprise": round(row[5] or 0.0, 17),
+                "joy": round(row[6] or 0.0, 17),
+                "anticipation": round(row[7] or 0.0, 17),
+                "trust": round(row[8] or 0.0, 17),
+                "disgust": round(row[9] or 0.0, 17),
+                # Sentiment counts (3-way)
+                "sentiment_positive_count": row[10] or 0,
+                "sentiment_negative_count": row[11] or 0,
+                "sentiment_neutral_count": row[12] or 0,
+                # Emotion counts
+                "anger_count": row[13] or 0,
+                "fear_count": row[14] or 0,
                 "sadness_count": row[15] or 0,
                 "surprise_count": row[16] or 0,
                 "joy_count": row[17] or 0,
                 "anticipation_count": row[18] or 0,
                 "trust_count": row[19] or 0,
-                "negative_count": row[20] or 0,
-                "disgust_count": row[21] or 0,
-                "anger_sum": round(row[22] or 0.0, 15),
-                "anticipation_sum": round(row[23] or 0.0, 14),
-                "disgust_sum": round(row[24] or 0.0, 15),
-                "fear_sum": round(row[25] or 0.0, 15),
-                "joy_sum": round(row[26] or 0.0, 14),
-                "negative_sum": round(row[27] or 0.0, 13),
-                "positive_sum": round(row[28] or 0.0, 14),
-                "sadness_sum": round(row[29] or 0.0, 15),
-                "senti_negative_count": float(row[30] or 0),
-                "senti_neutral_count": float(row[31] or 0),
-                "senti_positive_count": float(row[32] or 0),
-                "surprise_sum": round(row[33] or 0.0, 14),
-                "trust_sum": round(row[34] or 0.0, 14)
+                "disgust_count": row[20] or 0,
+                # Emotion sums
+                "anger_sum": round(row[21] or 0.0, 15),
+                "anticipation_sum": round(row[22] or 0.0, 14),
+                "disgust_sum": round(row[23] or 0.0, 15),
+                "fear_sum": round(row[24] or 0.0, 15),
+                "joy_sum": round(row[25] or 0.0, 14),
+                "sadness_sum": round(row[26] or 0.0, 15),
+                "surprise_sum": round(row[27] or 0.0, 14),
+                "trust_sum": round(row[28] or 0.0, 14)
             })
         
         conn.close()
@@ -663,9 +665,9 @@ def get_emotion_time_series_data(emotion):
         logger.error("API_SERVER", f"Failed to get time series data for emotion {emotion}: {e}")
         return jsonify({"error": "Time series query failed"}), 500
 
-@app.route('/timeSeriesData/compare/<state1>/<state2>')
-def get_comparison_time_series_data(state1, state2):
-    """Get time series emotion data for comparing two states"""
+@app.route('/timeSeriesData/compare/<state1>/<state2>/<emotion>')
+def get_comparison_time_series_data(state1, state2, emotion):
+    """Get time series data for comparing two states on a specific emotion"""
     conn = get_db_connection()
     if not conn:
         return jsonify({"error": "Database unavailable"}), 500
@@ -673,47 +675,43 @@ def get_comparison_time_series_data(state1, state2):
     try:
         cursor = conn.cursor()
         
-        # Get daily emotion averages for both states
-        cursor.execute("""
-            SELECT 
-                state_code,
-                DATE(timestamp) as date,
-                AVG(anger) as anger,
-                AVG(fear) as fear,
-                AVG(sadness) as sadness,
-                AVG(surprise) as surprise,
-                AVG(joy) as joy,
-                AVG(anticipation) as anticipation,
-                AVG(trust) as trust,
-                AVG(disgust) as disgust
-            FROM tweets 
-            WHERE state_code IN (%s, %s)
-            GROUP BY state_code, DATE(timestamp)
-            ORDER BY date DESC, state_code
-            LIMIT 730
-        """, (state1, state2))
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion: {emotion}. Valid emotions: {valid_emotions}"}), 400
         
-        time_series_data = []
+        # Get daily emotion data for both states for the specific emotion
+        query = f"""
+        SELECT 
+            state_code,
+            DATE(created_at) as date,
+            AVG({emotion}) as emotion_value
+        FROM tweets 
+        WHERE state_code IN ('{state1}', '{state2}')
+        AND {emotion} IS NOT NULL
+        GROUP BY state_code, DATE(created_at)
+        ORDER BY state_code, date
+        """
+        
+        cursor.execute(query)
+        
+        # Convert to list of dictionaries
+        data = []
         for row in cursor.fetchall():
-            time_series_data.append({
-                "state": row[0],
-                "date": row[1].strftime('%Y-%m-%d') if row[1] else None,
-                "anger": round(row[2] or 0.0, 3),
-                "fear": round(row[3] or 0.0, 3),
-                "sadness": round(row[4] or 0.0, 3),
-                "surprise": round(row[5] or 0.0, 3),
-                "joy": round(row[6] or 0.0, 3),
-                "anticipation": round(row[7] or 0.0, 3),
-                "trust": round(row[8] or 0.0, 3),
-                "disgust": round(row[9] or 0.0, 3)
+            data.append({
+                'state': row[0],
+                'date': row[1].isoformat(),
+                emotion: float(row[2]) if row[2] is not None else 0.0
             })
         
+        cursor.close()
         conn.close()
         
-        return jsonify(time_series_data)
+        print(f"Retrieved {len(data)} comparison records for {state1} vs {state2} on {emotion}")
+        return jsonify(data)
         
     except Exception as e:
-        logger.error("API_SERVER", f"Failed to get comparison data for {state1} vs {state2}: {e}")
+        logger.error("API_SERVER", f"Failed to get comparison data for {state1} vs {state2} on {emotion}: {e}")
         return jsonify({"error": "Comparison query failed"}), 500
 
 @app.route('/emotionAcrossStates/<emotion>')
