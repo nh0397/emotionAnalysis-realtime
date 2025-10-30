@@ -258,29 +258,96 @@
 
 .sql-preview {
   background: rgba(0,0,0,0.3);
-  padding: 10px;
+  padding: 12px;
   border-radius: 6px;
-  margin: 8px 0;
+  margin: 12px 0;
   overflow-x: auto;
+  border-left: 3px solid rgba(100,200,255,0.5);
+}
+
+.sql-header {
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
 }
 
 .sql-preview code {
   color: #61dafb;
   font-family: 'Courier New', monospace;
   font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  display: block;
 }
 
-.results-mini {
-  margin-top: 8px;
-  padding: 6px 10px;
-  background: rgba(100,255,100,0.1);
-  border-left: 2px solid rgba(100,255,100,0.5);
-  border-radius: 4px;
+.results-table-container {
+  margin-top: 12px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  overflow: hidden;
 }
 
-.results-mini small {
-  color: #aaffaa;
+.results-header {
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
   font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.9);
+}
+
+.results-table-wrapper {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.results-table thead {
+  position: sticky;
+  top: 0;
+  background: rgba(255,255,255,0.1);
+  z-index: 1;
+}
+
+.results-table th {
+  padding: 8px;
+  text-align: left;
+  font-weight: 600;
+  color: rgba(255,255,255,0.9);
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  white-space: nowrap;
+}
+
+.results-table td {
+  padding: 8px;
+  color: rgba(255,255,255,0.8);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.results-table tbody tr:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.results-footer {
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.03);
+  border-top: 1px solid rgba(255,255,255,0.1);
 }
 
 .hint-badge {
@@ -331,49 +398,6 @@
   padding: 16px;
   background: rgba(255,255,255,0.05);
   border-top: 1px solid rgba(255,255,255,0.1);
-}
-
-.screenshot-toggle {
-  margin-bottom: 12px;
-}
-
-.checkbox-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.checkbox-container input[type="checkbox"] {
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-radius: 4px;
-  background: rgba(255,255,255,0.05);
-  cursor: pointer;
-  position: relative;
-  transition: all 0.2s;
-}
-
-.checkbox-container input[type="checkbox"]:checked {
-  background: rgba(255,255,255,0.2);
-  border-color: rgba(255,255,255,0.5);
-}
-
-.checkbox-container input[type="checkbox"]:checked::after {
-  content: '✓';
-  position: absolute;
-  top: -2px;
-  left: 2px;
-  color: white;
-  font-size: 14px;
-}
-
-.checkbox-label {
-  font-size: 13px;
-  color: rgba(255,255,255,0.7);
 }
 
 .input-row {

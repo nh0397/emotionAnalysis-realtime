@@ -7,7 +7,6 @@ export default function FloatingChatbot() {
   const [question, setQuestion] = useState('');
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [includeScreenshot, setIncludeScreenshot] = useState(false);
   const [capturing, setCapturing] = useState(false);
 
   const captureScreenshot = async () => {
@@ -35,21 +34,24 @@ export default function FloatingChatbot() {
     setLoading(true);
     const userMessage = { 
       type: 'question', 
-      text: question,
-      hasScreenshot: includeScreenshot 
+      text: question
     };
     setHistory(prev => [...prev, userMessage]);
 
-    let screenshot = null;
-    if (includeScreenshot) {
-      screenshot = await captureScreenshot();
-    }
-
     try {
-      const endpoint = includeScreenshot ? '/chat/vision' : '/chat';
-      const payload = includeScreenshot 
-        ? { question: question.trim(), screenshot }
-        : { question: question.trim() };
+      // Get or create session ID
+      let sessionId = localStorage.getItem('chatSessionId');
+      if (!sessionId) {
+        sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('chatSessionId', sessionId);
+      }
+
+      const endpoint = '/chat';
+      const payload = {
+        question: question.trim(),
+        session_id: sessionId,
+        current_page: window.location.pathname
+      };
 
       const response = await fetch(`http://localhost:9000${endpoint}`, {
         method: 'POST',
@@ -72,7 +74,6 @@ export default function FloatingChatbot() {
 
       setHistory(prev => [...prev, botMessage]);
       setQuestion('');
-      setIncludeScreenshot(false);
     } catch (err) {
       setHistory(prev => [...prev, { type: 'error', text: err.message }]);
     } finally {
@@ -167,9 +168,6 @@ export default function FloatingChatbot() {
                   <div className="message-bubble user-bubble">
                     <div className="bubble-content">
                       {item.text}
-                      {item.hasScreenshot && (
-                        <span className="screenshot-badge">📸 with screenshot</span>
-                      )}
                     </div>
                   </div>
                 )}
@@ -180,16 +178,48 @@ export default function FloatingChatbot() {
                       {item.message && <p className="bot-text">{item.message}</p>}
                       {item.sql && (
                         <div className="sql-preview">
+                          <div className="sql-header">SQL Query:</div>
                           <code>{item.sql}</code>
                         </div>
                       )}
                       {item.rows && item.rows.length > 0 && (
-                        <div className="results-mini">
-                          <small>✓ {item.rows.length} result(s)</small>
+                        <div className="results-table-container">
+                          <div className="results-header">
+                            <span>Results ({item.rows.length} rows)</span>
+                          </div>
+                          <div className="results-table-wrapper">
+                            <table className="results-table">
+                              <thead>
+                                <tr>
+                                  {Object.keys(item.rows[0]).map((col, i) => (
+                                    <th key={i}>{col}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {item.rows.slice(0, 10).map((row, i) => (
+                                  <tr key={i}>
+                                    {Object.values(row).map((val, j) => (
+                                      <td key={j}>{
+                                        typeof val === 'number' ? val.toFixed(3) :
+                                        typeof val === 'object' ? JSON.stringify(val) :
+                                        val
+                                      }</td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {item.rows.length > 10 && (
+                            <div className="results-footer">
+                              ... and {item.rows.length - 10} more rows
+                            </div>
+                          )}
                         </div>
                       )}
                       {item.chartHint && (
-                        <div className="hint-badge">💡 {item.chartHint}</div>
+                        <div className="hint-badge">💡 Suggested: {item.chartHint}</div>
                       )}
                     </div>
                   </div>
@@ -218,20 +248,6 @@ export default function FloatingChatbot() {
 
           {/* Input Footer */}
           <div className="chatbot-floating-footer">
-            <div className="screenshot-toggle">
-              <label className="checkbox-container">
-                <input 
-                  type="checkbox" 
-                  checked={includeScreenshot}
-                  onChange={(e) => setIncludeScreenshot(e.target.checked)}
-                  disabled={loading}
-                />
-                <span className="checkmark"></span>
-                <span className="checkbox-label">
-                  📷 Include screenshot {capturing && '(capturing...)'}
-                </span>
-              </label>
-            </div>
             <div className="input-row">
               <textarea
                 value={question}

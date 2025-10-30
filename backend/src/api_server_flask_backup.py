@@ -1,68 +1,35 @@
 #!/usr/bin/env python3
 """
-FastAPI Server for Tweet System - Migrated from Flask
-Handles real-time streaming, historical data, metrics, and chatbot
+Complete API Server for Tweet System
+Handles real-time streaming, historical data, and metrics
 """
 
-from fastapi import FastAPI, Query, Path, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Optional, List, Dict
-import json
-import time
-import psycopg
-from datetime import datetime, timedelta
+from flask import Flask, Response, jsonify, request
+from flask_cors import CORS
 from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
-import asyncio
+import json
+import time
+import psycopg2
+from datetime import datetime, timedelta
 from unified_logger import logger
 
-# Import chatbot services
-from chatbot_api.services.nl2sql import generate_sql
-from chatbot_api.services.validator import validate_sql, add_limit_if_missing
-from chatbot_api.services.db import run_sql, check_explain_cost
-from chatbot_api.services.chart_hints import infer_chart_type
-from chatbot_api.services.intent_classifier import classify_intent_smart
-from chatbot_api.config import (
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
-    OLLAMA_TIMEOUT,
-    OLLAMA_TEMP_SMALLTALK,
-    MAX_CONVERSATION_HISTORY,
-    MAX_SQL_LIMIT,
-    SQL_TIMEOUT,
-    MAX_QUERY_COST
-)
-
-app = FastAPI(
-    title="TecViz API",
-    description="Real-time emotion analytics and NL chatbot",
-    version="3.0.0"
-)
-
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = Flask(__name__)
+CORS(app)
 
 # Database configuration
 DB_PARAMS = {
     'host': 'localhost',
     'port': 5432,
-    'dbname': 'tweetdb',
+    'database': 'tweetdb',
     'user': 'tweetuser',
     'password': 'tweetpass'
 }
 
 def get_db_connection():
-    """Get psycopg3 database connection"""
+    """Get database connection"""
     try:
-        return psycopg.connect(**DB_PARAMS)
+        return psycopg2.connect(**DB_PARAMS)
     except Exception as e:
         logger.error("API_SERVER", f"Database connection failed: {e}")
         return None
@@ -75,237 +42,117 @@ def get_kafka_consumer():
             bootstrap_servers=['localhost:9092'],
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
             auto_offset_reset='latest',
-            group_id='fastapi-sse-group'
+            group_id='flask-sse-group'
         )
         return consumer
     except Exception as e:
         logger.error("API_SERVER", f"Kafka connection failed: {e}")
         return None
 
-# Pydantic Models
-class Question(BaseModel):
-    question: str
-    session_id: Optional[str] = "default"
-    current_page: Optional[str] = None
+def format_sse(data: dict, event=None) -> str:
+    """Format data as Server-Sent Events"""
+    msg = f"data: {json.dumps(data)}\n\n"
+    if event is not None:
+        msg = f"event: {event}\n{msg}"
+    return msg
 
-class VisionQuestion(BaseModel):
-    question: str
-    screenshot: Optional[str] = None
-    session_id: Optional[str] = "default"
-    current_page: Optional[str] = None
-
-# Conversation memory (in-memory; could be Redis/DB for production)
-conversation_history: Dict[str, List[Dict]] = {}
-
-class HealthResponse(BaseModel):
-    status: str
-    timestamp: str
-    services: Dict[str, str]
-
-# === ROOT & HEALTH ENDPOINTS ===
-
-@app.get("/")
+@app.route('/')
 def root():
     """API root endpoint"""
-    return {
+    return jsonify({
         "status": "success",
-        "message": "TecViz API - FastAPI Edition",
-        "version": "3.0.0",
+        "message": "Tweet System API",
+        "version": "2.0.0",
         "endpoints": {
             "real-time": "/tweets/stream",
-            "historical": "/tweets/history",
+            "historical": "/tweets/history", 
             "states": "/tweets/states",
             "metrics": "/tweets/metrics",
             "health": "/health",
-            "chatbot": "/chat",
             "visualization": {
                 "dot-plot-data": "/data",
+                "time-series-data": "/timeSeriesData",
                 "emotion-time-series": "/timeSeriesData/emotion/{emotion}",
                 "state-comparison": "/timeSeriesData/compare/{state1}/{state2}/{emotion}"
             }
         }
-    }
+    })
 
-@app.get("/health", response_model=HealthResponse)
+@app.route('/health')
 def health_check():
     """System health check"""
+    # Check database
     db_status = "connected" if get_db_connection() else "disconnected"
+    
+    # Check Kafka
     kafka_status = "connected" if get_kafka_consumer() else "disconnected"
     
-    return {
+    return jsonify({
         "status": "healthy" if db_status == "connected" and kafka_status == "connected" else "degraded",
         "timestamp": datetime.now().isoformat(),
         "services": {
             "database": db_status,
             "kafka": kafka_status
         }
-    }
+    })
 
-# === REAL-TIME STREAMING ===
-
-@app.get("/tweets/stream")
-async def stream_tweets():
+@app.route('/tweets/stream')
+def stream_tweets():
     """Real-time tweet streaming via SSE"""
-    async def event_stream():
+    def event_stream():
         logger.system_event("SSE_CLIENT_CONNECTED")
         
+        # 🚀 Create consumer ONCE per connection
         consumer = get_kafka_consumer()
         if not consumer:
-            yield f"event: error\ndata: {json.dumps({'error': 'Kafka unavailable'})}\n\n"
-            return
+            yield format_sse({"error": "Kafka unavailable"}, "error")
+            return  # Exit if Kafka is down
         
         try:
-            yield f"event: connection\ndata: {json.dumps({'status': 'connected'})}\n\n"
+            yield format_sse({"status": "connected"}, "connection")
             
+            # 🚀 Use the SAME consumer for all messages
             for message in consumer:
                 tweet = message.value
                 logger.system_event("UI_STREAMED", f"Tweet ID: {tweet.get('id', 'unknown')}")
-                yield f"event: tweet\ndata: {json.dumps(tweet)}\n\n"
-                await asyncio.sleep(0)  # Allow other tasks
+                yield format_sse(tweet, "tweet")
                 
         except Exception as e:
             logger.error("API_SERVER", f"Stream error: {e}")
-            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            yield format_sse({"error": str(e)}, "error")
         finally:
+            # 🚀 Clean up consumer when done
             if consumer:
                 consumer.close()
                 logger.system_event("KAFKA_CONSUMER_CLOSED")
     
-    return StreamingResponse(
+    return Response(
         event_stream(),
-        media_type="text/event-stream",
+        mimetype='text/event-stream',
         headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*"
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
         }
     )
 
-@app.get("/tweets/aggregated/stream")
-async def stream_aggregated_emotions():
-    """Server-Sent Events endpoint for real-time aggregated emotion updates"""
-    async def generate():
-        try:
-            conn = get_db_connection()
-            if not conn:
-                yield f"data: {json.dumps({'error': 'Database unavailable'})}\n\n"
-                return
-            
-            cursor = conn.cursor()
-            
-            # Get initial data
-            cursor.execute("""
-                SELECT 
-                    state_code,
-                    anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
-                    anticipation_avg, trust_avg, disgust_avg,
-                    sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
-                    tweet_count, last_updated
-                FROM emotion_aggregates 
-                ORDER BY state_code
-            """)
-            
-            rows = cursor.fetchall()
-            initial_data = []
-            
-            for row in rows:
-                initial_data.append({
-                    'state': row[0],
-                    'anger': float(row[1]) if row[1] is not None else 0.0,
-                    'joy': float(row[2]) if row[2] is not None else 0.0,
-                    'fear': float(row[3]) if row[3] is not None else 0.0,
-                    'sadness': float(row[4]) if row[4] is not None else 0.0,
-                    'surprise': float(row[5]) if row[5] is not None else 0.0,
-                    'anticipation': float(row[6]) if row[6] is not None else 0.0,
-                    'trust': float(row[7]) if row[7] is not None else 0.0,
-                    'disgust': float(row[8]) if row[8] is not None else 0.0,
-                    'sentiment_positive_count': row[9] if row[9] is not None else 0,
-                    'sentiment_negative_count': row[10] if row[10] is not None else 0,
-                    'sentiment_neutral_count': row[11] if row[11] is not None else 0,
-                    'tweet_count': row[12],
-                    'last_updated': row[13].isoformat() if row[13] else None
-                })
-            
-            yield f"data: {json.dumps({'type': 'initial', 'data': initial_data})}\n\n"
-            
-            # Monitor for changes every 5 seconds
-            last_check = time.time()
-            while True:
-                await asyncio.sleep(5)
-                current_time = time.time()
-                
-                cursor.execute("""
-                    SELECT 
-                        state_code,
-                        anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
-                        anticipation_avg, trust_avg, disgust_avg,
-                        sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
-                        tweet_count, last_updated
-                    FROM emotion_aggregates 
-                    WHERE last_updated > %s
-                    ORDER BY state_code
-                """, (datetime.fromtimestamp(last_check - 10),))
-                
-                updated_rows = cursor.fetchall()
-                if updated_rows:
-                    updated_data = []
-                    for row in updated_rows:
-                        updated_data.append({
-                            'state': row[0],
-                            'anger': float(row[1]) if row[1] is not None else 0.0,
-                            'joy': float(row[2]) if row[2] is not None else 0.0,
-                            'fear': float(row[3]) if row[3] is not None else 0.0,
-                            'sadness': float(row[4]) if row[4] is not None else 0.0,
-                            'surprise': float(row[5]) if row[5] is not None else 0.0,
-                            'anticipation': float(row[6]) if row[6] is not None else 0.0,
-                            'trust': float(row[7]) if row[7] is not None else 0.0,
-                            'disgust': float(row[8]) if row[8] is not None else 0.0,
-                            'sentiment_positive_count': row[9] if row[9] is not None else 0,
-                            'sentiment_negative_count': row[10] if row[10] is not None else 0,
-                            'sentiment_neutral_count': row[11] if row[11] is not None else 0,
-                            'tweet_count': row[12],
-                            'last_updated': row[13].isoformat() if row[13] else None
-                        })
-                    
-                    yield f"data: {json.dumps({'type': 'update', 'data': updated_data})}\n\n"
-                
-                last_check = current_time
-                
-        except Exception as e:
-            logger.error("API_SERVER", f"SSE stream error: {e}")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        finally:
-            if 'conn' in locals():
-                conn.close()
-    
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*"
-        }
-    )
-
-# === HISTORICAL DATA ===
-
-@app.get("/tweets/history")
-def get_tweet_history(
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    state: Optional[str] = Query(None)
-):
+@app.route('/tweets/history')
+def get_tweet_history():
     """Get paginated historical tweets from database"""
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 20))
+    state_filter = request.args.get('state')
+    
     offset = (page - 1) * limit
     
     conn = get_db_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        return jsonify({"error": "Database unavailable"}), 500
     
     try:
         cursor = conn.cursor()
         
+        # Build query with optional state filter
         base_query = """
             SELECT tweet_id, username, raw_text, timestamp, state_code, 
                    state_name, context, likes, retweets, replies, views, created_at
@@ -314,20 +161,22 @@ def get_tweet_history(
         
         count_query = "SELECT COUNT(*) FROM tweets"
         
-        params = []
-        if state:
+        if state_filter:
             base_query += " WHERE state_code = %s"
             count_query += " WHERE state_code = %s"
-            params.append(state)
+            params = [state_filter]
+        else:
+            params = []
         
         base_query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
         
         # Get total count
-        cursor.execute(count_query, params if state else [])
+        cursor.execute(count_query, params[:-2] if state_filter else [])
         total_count = cursor.fetchone()[0]
         
         # Get tweets
-        cursor.execute(base_query, params + [limit, offset])
+        cursor.execute(base_query, params)
         tweets = []
         
         for row in cursor.fetchall():
@@ -348,7 +197,7 @@ def get_tweet_history(
         
         conn.close()
         
-        return {
+        return jsonify({
             "tweets": tweets,
             "pagination": {
                 "page": page,
@@ -356,22 +205,23 @@ def get_tweet_history(
                 "total": total_count,
                 "pages": (total_count + limit - 1) // limit
             }
-        }
+        })
         
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get tweet history: {e}")
-        raise HTTPException(status_code=500, detail="Database query failed")
+        return jsonify({"error": "Database query failed"}), 500
 
-@app.get("/tweets/states")
+@app.route('/tweets/states')
 def get_unique_states():
     """Get all unique states from the database for filtering"""
     conn = get_db_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        return jsonify({"error": "Database unavailable"}), 500
     
     try:
         cursor = conn.cursor()
         
+        # Get unique states with their names, ordered by state code
         cursor.execute("""
             SELECT DISTINCT state_code, state_name 
             FROM tweets 
@@ -383,21 +233,177 @@ def get_unique_states():
         
         conn.close()
         
-        return {
+        return jsonify({
             "states": states,
             "count": len(states)
-        }
+        })
         
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get unique states: {e}")
-        raise HTTPException(status_code=500, detail="Database query failed")
+        return jsonify({"error": "Database query failed"}), 500
 
-@app.get("/tweets/metrics")
+@app.route('/tweets/aggregated')
+def get_aggregated_emotions():
+    """Get aggregated emotion scores by state for dot plot"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                state_code,
+                anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg,
+                tweet_count, last_updated
+            FROM emotion_aggregates 
+            ORDER BY state_code
+        """)
+        
+        rows = cursor.fetchall()
+        aggregated_data = []
+        
+        for row in rows:
+            aggregated_data.append({
+                'state': row[0],
+                'anger': float(row[1]) if row[1] is not None else 0.0,
+                'joy': float(row[2]) if row[2] is not None else 0.0,
+                'fear': float(row[3]) if row[3] is not None else 0.0,
+                'sadness': float(row[4]) if row[4] is not None else 0.0,
+                'surprise': float(row[5]) if row[5] is not None else 0.0,
+                'positive': float(row[6]) if row[6] is not None else 0.0,
+                'negative': float(row[7]) if row[7] is not None else 0.0,
+                'anticipation': float(row[8]) if row[8] is not None else 0.0,
+                'trust': float(row[9]) if row[9] is not None else 0.0,
+                'disgust': float(row[10]) if row[10] is not None else 0.0,
+                'tweet_count': row[11],
+                'last_updated': row[12].isoformat() if row[12] else None
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        logger.system_event("UI_STREAMED", f"Streamed aggregated data for {len(aggregated_data)} states")
+        return jsonify(aggregated_data)
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to fetch aggregated emotions: {e}")
+        return jsonify({'error': 'Failed to fetch aggregated emotions'}), 500
+
+@app.route('/tweets/aggregated/stream')
+def stream_aggregated_emotions():
+    """Server-Sent Events endpoint for real-time aggregated emotion updates"""
+    def generate():
+        try:
+            conn = psycopg2.connect(**db_params)
+            cursor = conn.cursor()
+            
+            # Get initial data
+            cursor.execute("""
+                SELECT 
+                    state_code,
+                    anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                    anticipation_avg, trust_avg, disgust_avg,
+                    sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
+                    tweet_count, last_updated
+                FROM emotion_aggregates 
+                ORDER BY state_code
+                """)
+            
+            rows = cursor.fetchall()
+            initial_data = []
+            
+            for row in rows:
+                initial_data.append({
+                    'state': row[0],
+                    # Emotions (8-way)
+                    'anger': float(row[1]) if row[1] is not None else 0.0,
+                    'joy': float(row[2]) if row[2] is not None else 0.0,
+                    'fear': float(row[3]) if row[3] is not None else 0.0,
+                    'sadness': float(row[4]) if row[4] is not None else 0.0,
+                    'surprise': float(row[5]) if row[5] is not None else 0.0,
+                    'anticipation': float(row[6]) if row[6] is not None else 0.0,
+                    'trust': float(row[7]) if row[7] is not None else 0.0,
+                    'disgust': float(row[8]) if row[8] is not None else 0.0,
+                    # Sentiment counts (3-way)
+                    'sentiment_positive_count': row[9] if row[9] is not None else 0,
+                    'sentiment_negative_count': row[10] if row[10] is not None else 0,
+                    'sentiment_neutral_count': row[11] if row[11] is not None else 0,
+                    'tweet_count': row[12],
+                    'last_updated': row[13].isoformat() if row[13] else None
+                })
+            
+            # Send initial data
+            yield f"data: {json.dumps({'type': 'initial', 'data': initial_data})}\n\n"
+            
+            # Monitor for changes every 5 seconds
+            last_check = time.time()
+            while True:
+                time.sleep(5)
+                current_time = time.time()
+                
+                # Check for updates in the last 10 seconds
+                cursor.execute("""
+                    SELECT 
+                        state_code,
+                        anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                            anticipation_avg, trust_avg, disgust_avg,
+                            sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
+                        tweet_count, last_updated
+                    FROM emotion_aggregates 
+                    WHERE last_updated > %s
+                    ORDER BY state_code
+                """, (datetime.datetime.fromtimestamp(last_check - 10),))
+                
+                updated_rows = cursor.fetchall()
+                if updated_rows:
+                    updated_data = []
+                    for row in updated_rows:
+                        updated_data.append({
+                            'state': row[0],
+                            # Emotions (8-way)
+                            'anger': float(row[1]) if row[1] is not None else 0.0,
+                            'joy': float(row[2]) if row[2] is not None else 0.0,
+                            'fear': float(row[3]) if row[3] is not None else 0.0,
+                            'sadness': float(row[4]) if row[4] is not None else 0.0,
+                            'surprise': float(row[5]) if row[5] is not None else 0.0,
+                            'anticipation': float(row[6]) if row[6] is not None else 0.0,
+                            'trust': float(row[7]) if row[7] is not None else 0.0,
+                            'disgust': float(row[8]) if row[8] is not None else 0.0,
+                            # Sentiment counts (3-way)
+                            'sentiment_positive_count': row[9] if row[9] is not None else 0,
+                            'sentiment_negative_count': row[10] if row[10] is not None else 0,
+                            'sentiment_neutral_count': row[11] if row[11] is not None else 0,
+                            'tweet_count': row[12],
+                            'last_updated': row[13].isoformat() if row[13] else None
+                        })
+                    
+                    yield f"data: {json.dumps({'type': 'update', 'data': updated_data})}\n\n"
+                
+                last_check = current_time
+                
+        except Exception as e:
+            logger.error("API_SERVER", f"SSE stream error: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            if 'conn' in locals():
+                conn.close()
+    
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*'
+        }
+    )
+
+@app.route('/tweets/metrics')
 def get_metrics():
     """Get system metrics and analytics"""
     conn = get_db_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        return jsonify({"error": "Database unavailable"}), 500
     
     try:
         cursor = conn.cursor()
@@ -446,7 +452,7 @@ def get_metrics():
         
         conn.close()
         
-        return {
+        return jsonify({
             "total_tweets": total_tweets,
             "tweets_by_state": tweets_by_state,
             "tweets_by_context": tweets_by_context,
@@ -458,24 +464,23 @@ def get_metrics():
                 "views": round(engagement[3] or 0, 1)
             },
             "generated_at": datetime.now().isoformat()
-        }
+        })
         
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get metrics: {e}")
-        raise HTTPException(status_code=500, detail="Metrics query failed")
+        return jsonify({"error": "Metrics query failed"}), 500
 
-# === VISUALIZATION ENDPOINTS ===
-
-@app.get("/data")
+@app.route('/data')
 def get_dot_plot_data():
     """Get aggregated emotion data by state for dot plot visualization"""
     conn = get_db_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        return jsonify({"error": "Database unavailable"}), 500
     
     try:
         cursor = conn.cursor()
         
+        # Aggregate emotion data by state (exactly like sample.csv format)
         cursor.execute("""
             SELECT 
                 state_code as state,
@@ -516,8 +521,9 @@ def get_dot_plot_data():
         states_data = []
         for i, row in enumerate(cursor.fetchall()):
             states_data.append({
-                "": i,
+                "": i,  # Index column like in CSV
                 "state": row[0],
+                # Emotions (8-way)
                 "anger": round(row[2] or 0.0, 17),
                 "fear": round(row[3] or 0.0, 17),
                 "sadness": round(row[4] or 0.0, 17),
@@ -526,9 +532,11 @@ def get_dot_plot_data():
                 "anticipation": round(row[7] or 0.0, 17),
                 "trust": round(row[8] or 0.0, 17),
                 "disgust": round(row[9] or 0.0, 17),
+                # Sentiment counts (3-way)
                 "sentiment_positive_count": row[10] or 0,
                 "sentiment_negative_count": row[11] or 0,
                 "sentiment_neutral_count": row[12] or 0,
+                # Emotion counts
                 "anger_count": row[13] or 0,
                 "fear_count": row[14] or 0,
                 "sadness_count": row[15] or 0,
@@ -537,6 +545,7 @@ def get_dot_plot_data():
                 "anticipation_count": row[18] or 0,
                 "trust_count": row[19] or 0,
                 "disgust_count": row[20] or 0,
+                # Emotion sums
                 "anger_sum": round(row[21] or 0.0, 15),
                 "anticipation_sum": round(row[22] or 0.0, 14),
                 "disgust_sum": round(row[23] or 0.0, 15),
@@ -548,22 +557,25 @@ def get_dot_plot_data():
             })
         
         conn.close()
-        return states_data
+        
+        # Return array directly like the original expects
+        return jsonify(states_data)
         
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get dot plot data: {e}")
-        raise HTTPException(status_code=500, detail="Visualization query failed")
+        return jsonify({"error": "Visualization query failed"}), 500
 
-@app.get("/timeSeriesData/{state_code}")
-def get_state_time_series_data(state_code: str = Path(...)):
+@app.route('/timeSeriesData/<state_code>')
+def get_state_time_series_data(state_code):
     """Get time series emotion data for a specific state"""
     conn = get_db_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        return jsonify({"error": "Database unavailable"}), 500
     
     try:
         cursor = conn.cursor()
         
+        # Get daily emotion averages for the specific state
         cursor.execute("""
             SELECT 
                 DATE(timestamp) as date,
@@ -597,26 +609,29 @@ def get_state_time_series_data(state_code: str = Path(...)):
             })
         
         conn.close()
-        return time_series_data
+        
+        return jsonify(time_series_data)
         
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get time series data for {state_code}: {e}")
-        raise HTTPException(status_code=500, detail="Time series query failed")
+        return jsonify({"error": "Time series query failed"}), 500
 
-@app.get("/timeSeriesData/emotion/{emotion}")
-def get_emotion_time_series_data(emotion: str = Path(...)):
+@app.route('/timeSeriesData/emotion/<emotion>')
+def get_emotion_time_series_data(emotion):
     """Get time series data for a specific emotion across all states"""
     conn = get_db_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        return jsonify({"error": "Database unavailable"}), 500
     
     try:
-        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative']
-        if emotion not in valid_emotions:
-            raise HTTPException(status_code=400, detail=f"Invalid emotion: {emotion}")
-        
         cursor = conn.cursor()
         
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion: {emotion}. Valid emotions: {valid_emotions}"}), 400
+        
+        # Get daily emotion data for the specific emotion across all states
         query = f"""
         SELECT 
             state_code,
@@ -631,6 +646,7 @@ def get_emotion_time_series_data(emotion: str = Path(...)):
         cursor.execute(query)
         results = cursor.fetchall()
         
+        # Convert to list of dictionaries
         data = []
         for row in results:
             data.append({
@@ -643,46 +659,43 @@ def get_emotion_time_series_data(emotion: str = Path(...)):
         conn.close()
         
         print(f"Retrieved {len(data)} time series records for emotion {emotion}")
-        return data
+        return jsonify(data)
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get time series data for emotion {emotion}: {e}")
-        raise HTTPException(status_code=500, detail="Time series query failed")
+        return jsonify({"error": "Time series query failed"}), 500
 
-@app.get("/timeSeriesData/compare/{state1}/{state2}/{emotion}")
-def get_comparison_time_series_data(
-    state1: str = Path(...),
-    state2: str = Path(...),
-    emotion: str = Path(...)
-):
+@app.route('/timeSeriesData/compare/<state1>/<state2>/<emotion>')
+def get_comparison_time_series_data(state1, state2, emotion):
     """Get time series data for comparing two states on a specific emotion"""
     conn = get_db_connection()
     if not conn:
-        raise HTTPException(status_code=500, detail="Database unavailable")
+        return jsonify({"error": "Database unavailable"}), 500
     
     try:
-        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative']
-        if emotion not in valid_emotions:
-            raise HTTPException(status_code=400, detail=f"Invalid emotion: {emotion}")
-        
         cursor = conn.cursor()
         
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion: {emotion}. Valid emotions: {valid_emotions}"}), 400
+        
+        # Get daily emotion data for both states for the specific emotion
         query = f"""
             SELECT 
                 state_code,
                 DATE(timestamp) as date,
-                AVG({emotion}) as emotion_value
+            AVG({emotion}) as emotion_value
             FROM tweets 
-            WHERE state_code IN ('{state1}', '{state2}')
-              AND {emotion} IS NOT NULL
+        WHERE state_code IN ('{state1}', '{state2}')
+        AND {emotion} IS NOT NULL
             GROUP BY state_code, DATE(timestamp)
-            ORDER BY state_code, date
+        ORDER BY state_code, date
         """
         
         cursor.execute(query)
         
+        # Convert to list of dictionaries
         data = []
         for row in cursor.fetchall():
             data.append({
@@ -695,199 +708,122 @@ def get_comparison_time_series_data(
         conn.close()
         
         print(f"Retrieved {len(data)} comparison records for {state1} vs {state2} on {emotion}")
-        return data
+        return jsonify(data)
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("API_SERVER", f"Failed to get comparison data for {state1} vs {state2} on {emotion}: {e}")
-        raise HTTPException(status_code=500, detail="Comparison query failed")
+        return jsonify({"error": "Comparison query failed"}), 500
 
-# === CHATBOT ENDPOINTS ===
-
-@app.post("/chat")
-def chat(q: Question):
-    """Smart chatbot: classify intent → route to appropriate handler"""
-    if not q.question or not q.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty")
+@app.route('/emotionAcrossStates/<emotion>')
+def get_emotion_across_states(emotion):
+    """Get one emotion across all states for comparison"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
     
-    # Get conversation history for this session
-    session_id = q.session_id or "default"
-    history = conversation_history.get(session_id, [])
-    
-    # Classify intent with full context
-    intent, context_info = classify_intent_smart(
-        question=q.question,
-        has_screenshot=False,
-        current_page=q.current_page,
-        previous_queries=history
-    )
-    
-    logger.system_event("CHATBOT_INTENT", f"Question: '{q.question}' → Intent: {intent}, Reason: {context_info.get('reason')}, Confidence: {context_info.get('confidence', 'N/A')}")
-    
-    # Route to appropriate handler
-    if intent == 'smalltalk':
-        result = handle_smalltalk(q.question)
-    elif intent == 'data_query':
-        result = handle_data_query(q.question, context_info)
-    elif intent == 'rag_query':
-        result = handle_rag_query(q.question, None, context_info)
-    else:
-        result = {
-            "sql": None,
-            "rows": [],
-            "chart_hint": None,
-            "message": "I'm not sure how to help with that. Can you rephrase?"
-        }
-    
-    # Save to conversation history
-    history.append({
-        'question': q.question,
-        'intent': intent,
-        'context': context_info,
-        'timestamp': time.time()
-    })
-    conversation_history[session_id] = history[-MAX_CONVERSATION_HISTORY:]
-    
-    # Add intent to response for debugging
-    result['intent'] = intent
-    result['context'] = context_info
-    
-    return result
-
-def handle_smalltalk(question: str) -> dict:
-    """Handle casual conversation with friendly responses"""
     try:
-        import requests
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": f"You are TecViz AI, a friendly assistant for an emotion analytics platform. Respond briefly and warmly to:\n{question}",
-                "stream": False,
-                "options": {"temperature": OLLAMA_TEMP_SMALLTALK}
-            },
-            timeout=OLLAMA_TIMEOUT
-        )
+        cursor = conn.cursor()
         
-        if response.status_code == 200:
-            message = response.json().get("response", "Hello! How can I help you today?").strip()
-        else:
-            message = "Hello! How can I help you analyze emotion data today?"
-            
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion. Must be one of: {valid_emotions}"}), 400
+        
+        # Get average emotion value for each state
+        cursor.execute(f"""
+            SELECT 
+                state_code,
+                AVG({emotion}) as avg_{emotion},
+                COUNT(*) as tweet_count
+            FROM tweets 
+            GROUP BY state_code
+            ORDER BY avg_{emotion} DESC
+        """)
+        
+        emotion_data = []
+        for row in cursor.fetchall():
+            emotion_data.append({
+                "state": row[0],
+                "emotion": emotion,
+                "value": round(row[1] or 0.0, 3),
+                "tweet_count": row[2]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            "emotion": emotion,
+            "data": emotion_data,
+            "total_states": len(emotion_data)
+        })
+        
     except Exception as e:
-        logger.error("CHATBOT", f"Smalltalk error: {e}")
-        message = "Hello! Ask me anything about emotion data or the platform."
-    
-    return {
-        "sql": None,
-        "rows": [],
-        "chart_hint": None,
-        "message": message
-    }
+        logger.error("API_SERVER", f"Failed to get {emotion} across states: {e}")
+        return jsonify({"error": f"Failed to get {emotion} across states"}), 500
 
-def handle_data_query(question: str, context_info: dict) -> dict:
-    """Handle data queries with NL→SQL pipeline"""
-    # Step 1: Generate SQL from natural language
-    sql = generate_sql(question)
-    if not sql:
-        return {
-            "sql": None,
-            "rows": [],
-            "chart_hint": None,
-            "message": "I couldn't generate a valid SQL query. Try being more specific about states, emotions, or time periods."
-        }
+@app.route('/compareStates/<state1>/<state2>/<emotion>')
+def compare_two_states_emotion(state1, state2, emotion):
+    """Compare one emotion between two specific states"""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 500
     
-    # Step 2: Ensure LIMIT is present
-    sql = add_limit_if_missing(sql, max_limit=MAX_SQL_LIMIT)
-    
-    # Step 3: Validate SQL for safety
-    is_valid, error = validate_sql(sql)
-    if not is_valid:
-        return {
-            "sql": sql,
-            "rows": [],
-            "chart_hint": None,
-            "message": f"Query validation failed: {error}"
-        }
-    
-    # Step 4: Check query cost with EXPLAIN (skip if no limit set)
-    if MAX_QUERY_COST is not None:
-        is_safe, cost_error = check_explain_cost(sql, max_cost=MAX_QUERY_COST)
-        if not is_safe:
-            return {
-                "sql": sql,
-                "rows": [],
-                "chart_hint": None,
-                "message": f"Query too expensive. Try adding more filters or reducing the date range."
-            }
-    
-    # Step 5: Execute SQL
-    rows, exec_error = run_sql(sql, timeout=SQL_TIMEOUT)
-    if exec_error:
-        return {
-            "sql": sql,
-            "rows": [],
-            "chart_hint": None,
-            "message": f"Execution error: {exec_error}"
-        }
-    
-    # Step 6: Infer chart type
-    chart_hint = infer_chart_type(sql, rows)
-    
-    # Step 7: Return results
-    return {
-        "sql": sql,
-        "rows": rows,
-        "chart_hint": chart_hint,
-        "message": f"Found {len(rows)} result(s)" if rows else "No results found"
-    }
-
-def handle_rag_query(question: str, screenshot: Optional[str], context_info: dict) -> dict:
-    """Handle RAG/UI help queries (placeholder for now)"""
-    return {
-        "sql": None,
-        "rows": [],
-        "chart_hint": None,
-        "message": "I can help you understand the platform! This feature is coming soon. For now, try asking specific questions about emotion data by state or time period."
-    }
-
-@app.post("/chat/vision")
-def chat_vision(q: VisionQuestion):
-    """Vision-based chat: screenshot + question → LLM (LLaVA or GPT-4V) → answer"""
-    if not q.question or not q.question.strip():
-        raise HTTPException(status_code=400, detail="Question cannot be empty")
-    
-    # Get conversation history
-    session_id = q.session_id or "default"
-    history = conversation_history.get(session_id, [])
-    
-    # Classify intent (screenshot always triggers RAG)
-    intent, context_info = classify_intent_smart(
-        question=q.question,
-        has_screenshot=bool(q.screenshot),
-        current_page=q.current_page,
-        previous_queries=history
-    )
-    
-    # Route to RAG handler
-    result = handle_rag_query(q.question, q.screenshot, context_info)
-    
-    # Save to history
-    history.append({
-        'question': q.question,
-        'intent': intent,
-        'context': context_info,
-        'has_screenshot': bool(q.screenshot),
-        'timestamp': time.time()
-    })
-    conversation_history[session_id] = history[-MAX_CONVERSATION_HISTORY:]
-    
-    result['intent'] = intent
-    return result
+    try:
+        cursor = conn.cursor()
+        
+        # Validate emotion parameter
+        valid_emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust']
+        if emotion not in valid_emotions:
+            return jsonify({"error": f"Invalid emotion. Must be one of: {valid_emotions}"}), 400
+        
+        # Get emotion data for both states
+        cursor.execute(f"""
+            SELECT 
+                state_code,
+                AVG({emotion}) as avg_{emotion},
+                MIN({emotion}) as min_{emotion},
+                MAX({emotion}) as max_{emotion},
+                COUNT(*) as tweet_count
+            FROM tweets 
+            WHERE state_code IN (%s, %s)
+            GROUP BY state_code
+            ORDER BY state_code
+        """, (state1, state2))
+        
+        comparison_data = []
+        for row in cursor.fetchall():
+            comparison_data.append({
+                "state": row[0],
+                "emotion": emotion,
+                "average": round(row[1] or 0.0, 3),
+                "minimum": round(row[2] or 0.0, 3),
+                "maximum": round(row[3] or 0.0, 3),
+                "tweet_count": row[4]
+            })
+        
+        # Calculate difference
+        if len(comparison_data) == 2:
+            state1_avg = comparison_data[0]['average'] if comparison_data[0]['state'] == state1 else comparison_data[1]['average']
+            state2_avg = comparison_data[1]['average'] if comparison_data[1]['state'] == state2 else comparison_data[0]['average']
+            difference = round(state1_avg - state2_avg, 3)
+        else:
+            difference = 0
+        
+        conn.close()
+        
+        return jsonify({
+            "emotion": emotion,
+            "state1": state1,
+            "state2": state2,
+            "comparison": comparison_data,
+            "difference": difference,
+            "higher_state": state1 if difference > 0 else state2 if difference < 0 else "equal"
+        })
+        
+    except Exception as e:
+        logger.error("API_SERVER", f"Failed to compare {state1} vs {state2} for {emotion}: {e}")
+        return jsonify({"error": f"Failed to compare states for {emotion}"}), 500
 
 if __name__ == "__main__":
-    import uvicorn
-    logger.system_event("API_SERVER_STARTING", "Port 9000 (FastAPI)")
-    uvicorn.run(app, host="0.0.0.0", port=9000, log_level="info")
-
+    logger.system_event("API_SERVER_STARTING", "Port 9000")
+    app.run(host='0.0.0.0', port=9000, debug=True, threaded=True)

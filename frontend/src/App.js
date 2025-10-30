@@ -58,9 +58,13 @@ function App() {
 
       eventSource.addEventListener('error', (event) => {
         try {
-          const error = JSON.parse(event.data);
-          console.error('Stream error:', error);
-          setError(error.error);
+          if (event.data) {
+            const error = JSON.parse(event.data);
+            console.error('Stream error:', error);
+            setError(error.error);
+          } else {
+            setError('Stream error occurred');
+          }
         } catch (err) {
           console.error('Error parsing error event:', err);
           setError('Connection error');
