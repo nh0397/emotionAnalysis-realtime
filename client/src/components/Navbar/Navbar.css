@@ -1,0 +1,146 @@
+/* Navbar container */
+.navbar-container {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    background-color: #0d1b89;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    height: 3rem;
+    width: 97.5vw;
+  }
+  
+  /* Logo and app name */
+  .navbar-left {
+    display: flex;
+    align-items: center;
+  }
+  
+  .app-logo {
+    margin-top: 0.5rem;
+    width: 75px;
+    height: auto;
+    margin-right: 1rem;
+    border-radius: 50%;
+  }
+  
+  .app-name {
+    font-size: 2.2rem;
+    font-family: "Outfit", sans-serif;
+    color: white;
+    padding-top: 15px;
+  }
+  
+  /* Search bar */
+  .search-bar {
+    flex-grow: 1;
+    margin: 0 2rem;
+  }
+  
+  .search-bar input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border-radius: 30px;
+    border: 1px solid #ccc;
+    font-family: "Poppins", sans-serif;
+  
+  }
+  
+  /* User info and logout button */
+  .navbar-right {
+    display: flex;
+    align-items: left;
+    padding-right: 200px;
+  }
+  
+  .user-info {
+    display: flex;
+    align-items: center;
+    margin-right: 2rem;
+    flex-direction: column; 
+  }
+  
+  .username{
+      font-family: "Poppins", sans-serif;
+      margin-right: 0.5rem;
+      font-size: 15px;
+  }
+  .role {
+    font-family: "Poppins", sans-serif;
+    margin-right: 0.5rem;
+    font-size: 10px;
+  }
+  .tab-button{
+    background-color: #61dafb;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    cursor: pointer;
+    border-radius: 30px;
+    height: 3rem;
+  }
+  
+  .logout-button {
+    padding: 0.5rem 1rem;
+    background-color: #0d1b89;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-family: "Poppins", sans-serif;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    border-radius: 30px;
+    width: 6rem;
+    text-align: center;
+    height: 3rem;
+  }
+  
+  .logout-button:hover {
+    background-color: #0d1b897a;
+  }
+  
+  /* Tab content */
+  .tab-content {
+    position: absolute;
+    top: calc(100% + 10px); /* Adjust the distance from the navbar */
+    left: 0;
+    width: 100%;
+    background-color: #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 1000; /* Ensure it's above other content */
+    border-radius: 5px; /* Add border radius to match navbar */
+  }
+  
+  /* Styling for user info tab */
+  .user-info-tab {
+    padding: 0.5rem 1rem;
+    background-color: rgb(230, 230, 230);
+    border-radius: 5px;
+    margin-right: 1rem;
+  }
+  
+  
+  .home-link{
+    display: flex;
+    flex-direction: row;
+  }
+  
+  .initials-icon{
+    border: 2px Solid #0d1b89;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1.5rem;
+    color: #0d1b89;
+    font-weight: bold;
+    margin-left: 40px;
+  }
+  
+  .addPost{
+    border-radius: 0px;
+    width: 200px;
+  }

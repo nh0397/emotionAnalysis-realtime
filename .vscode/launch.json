@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Tweet Generator",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/src/simple_tweet_agent.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/backend/realtime/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend/src"
+            }
+        },
+        {
+            "name": "DB Consumer",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/src/db_consumer.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/backend/realtime/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend/src"
+            }
+        },
+        {
+            "name": "API server",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/src/api_server.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/backend/realtime/bin/python",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/backend/src"
+            }
+        }
+    ]
+}

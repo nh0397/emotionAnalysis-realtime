@@ -159,76 +159,85 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
     }
 
     if (activeTab === 3) {
-      const state1Data = data.filter((d) => d.state === selectedState1);
-      const state2Data = data.filter((d) => d.state === selectedState2);
+      // Build per-day difference series from API comparisonData
+      // comparisonData contains rows per state with {state, date, [emotion]: value}
+      const s1 = comparisonData.filter(d => d.state === selectedState1).map(d => ({ date: d.date, v: d[selectedEmotion] }));
+      const s2 = comparisonData.filter(d => d.state === selectedState2).map(d => ({ date: d.date, v: d[selectedEmotion] }));
+      const byDate = new Map();
+      s1.forEach(d => byDate.set(d.date, { date: d.date, s1: d.v, s2: undefined }));
+      s2.forEach(d => {
+        const e = byDate.get(d.date) || { date: d.date, s1: undefined, s2: undefined };
+        e.s2 = d.v; byDate.set(d.date, e);
+      });
+      const diffSeries = Array.from(byDate.values()).
+        filter(d => d.s1 != null && d.s2 != null).
+        map(d => ({ date: d.date, diff: +(d.s1 - d.s2).toFixed(4) }));
   
-      const reducedHeight = height / 3; // Reduce the height of each graph
+      const reducedHeight = Math.max(220, Math.round(height / 2)); // Taller diff chart for visibility
   
       svg.attr("width", width + margin.left + margin.right)
-        .attr("height", reducedHeight * 2 + margin.top + margin.bottom + 40);
+        .attr("height", reducedHeight + margin.top + margin.bottom + 60);
   
       const tooltip = d3.select("body").append("div")
         .attr("class", "tooltip")
         .style("opacity", 0);
   
       const xScale = d3.scaleTime()
-        .domain(d3.extent(data, (d) => new Date(d.date)))
+        .domain(d3.extent(diffSeries, (d) => new Date(d.date)))
         .range([0, width]);
   
       const yScale = d3.scaleLinear()
-        .domain([-0.2, 0.2])
-        .range([reducedHeight, 0]); // Use reducedHeight for scaling
+        .domain([-0.25, 0.25])
+        .range([reducedHeight, 0]);
   
       const chartGroup = svg.append("g")
         .attr("transform", `translate(${margin.left}, ${margin.top})`);
   
       // Draw Y-Axis first (to ensure visibility)
+      const yAxisTicks = [-0.25, -0.2, -0.1, 0, 0.1, 0.2, 0.25];
       chartGroup.append("g")
-        .call(d3.axisLeft(yScale).tickValues([-0.2, -0.1, 0, 0.1, 0.2]).tickFormat((d) => d.toFixed(1)))
-        .style("z-index", 10) // Ensures it’s on top of other elements
+        .call(d3.axisLeft(yScale).tickValues(yAxisTicks).tickFormat((d) => d.toFixed(2)))
+        .style("z-index", 10)
         .selectAll("text")
-        .style("font-size", "10px")
+        .style("font-size", "12px")
         .style("font-weight", "bold");
+
+      // Horizontal grid lines
+      chartGroup.append("g")
+        .attr("class", "grid")
+        .call(
+          d3.axisLeft(yScale)
+            .tickValues(yAxisTicks)
+            .tickSize(-width)
+            .tickFormat("")
+        )
+        .selectAll("line")
+        .attr("stroke", "#333")
+        .attr("stroke-opacity", 0.4)
+        .attr("stroke-dasharray", "2,2");
   
-      // Horizon chart for state1 (above x-axis)
-      bandColors.forEach((color, i) => {
-        chartGroup.append("path")
-          .datum(state1Data)
-          .attr("fill", color)
-          .attr("d", d3.area()
-            .x((d) => xScale(new Date(d.date)))
-            .y0((d) => yScale(Math.min(0.2, Math.max(0, d[selectedEmotion] - (i + 1) * 0.2))))
-            .y1((d) => yScale(Math.min(0.2, Math.max(0, d[selectedEmotion] - i * 0.2))))
-            .curve(d3.curveMonotoneX)
-          )
-          .on("mouseover", (event, d) => {
-            tooltip.transition().duration(200).style("opacity", 0.9);
-            tooltip.html(`State: ${selectedState1}<br>Emotion: ${selectedEmotion}<br>Score: ${d[selectedEmotion]}`)
-              .style("left", (event.pageX + 5) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0));
-      });
-  
-      // Horizon chart for state2 (below x-axis, inverted)
-      bandColors.forEach((color, i) => {
-        chartGroup.append("path")
-          .datum(state2Data)
-          .attr("fill", color)
-          .attr("d", d3.area()
-            .x((d) => xScale(new Date(d.date)))
-            .y0((d) => yScale(-Math.min(0.2, Math.max(0, d[selectedEmotion] - i * 0.2))))
-            .y1((d) => yScale(-Math.min(0.2, Math.max(0, d[selectedEmotion] - (i + 1) * 0.2))))
-            .curve(d3.curveMonotoneX)
-          )
-          .on("mouseover", (event, d) => {
-            tooltip.transition().duration(200).style("opacity", 0.9);
-            tooltip.html(`State: ${selectedState2}<br>Emotion: ${selectedEmotion}<br>Score: ${d[selectedEmotion]}`)
-              .style("left", (event.pageX + 5) + "px")
-              .style("top", (event.pageY - 28) + "px");
-          })
-          .on("mouseout", () => tooltip.transition().duration(500).style("opacity", 0));
-      });
+      // Difference area: positive diff above axis, negative below
+      chartGroup.append("path")
+        .datum(diffSeries)
+        .attr("fill", "#6baed6")
+        .attr("opacity", 0.6)
+        .attr("d", d3.area()
+          .x(d => xScale(new Date(d.date)))
+          .y0(d => yScale(Math.max(0, d.diff)))
+          .y1(() => yScale(0))
+          .curve(d3.curveMonotoneX)
+        );
+
+      chartGroup.append("path")
+        .datum(diffSeries)
+        .attr("fill", "#fc8d59")
+        .attr("opacity", 0.6)
+        .attr("d", d3.area()
+          .x(d => xScale(new Date(d.date)))
+          .y0(() => yScale(0))
+          .y1(d => yScale(Math.min(0, d.diff)))
+          .curve(d3.curveMonotoneX)
+        );
   
       // Append X-Axis
       chartGroup.append("g")
@@ -239,22 +248,15 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .attr("dy", "0.5em")
         .attr("transform", "rotate(30)")
         .style("text-anchor", "start")
-        .style("font-size", "8px");
+        .style("font-size", "10px");
   
-      // State Labels
-      chartGroup.append("text")
-        .attr("x", 10)
-        .attr("y", yScale(0.15))
-        .text(selectedState1)
-        .style("font-size", "12px")
-        .style("font-weight", "bold");
-  
-      chartGroup.append("text")
-        .attr("x", 10)
-        .attr("y", yScale(-0.15))
-        .text(selectedState2)
-        .style("font-size", "12px")
-        .style("font-weight", "bold");
+      // Labels and zero line
+      chartGroup.append("line")
+        .attr("x1", 0).attr("x2", width)
+        .attr("y1", yScale(0)).attr("y2", yScale(0))
+        .attr("stroke", "#aaa").attr("stroke-dasharray", "2,2");
+      chartGroup.append("text").attr("x", 10).attr("y", yScale(0.35)).text(selectedState1).style("font-size", "12px").style("font-weight", "bold");
+      chartGroup.append("text").attr("x", 10).attr("y", yScale(-0.35)).text(selectedState2).style("font-size", "12px").style("font-weight", "bold");
   
       return () => tooltip.remove();
     }

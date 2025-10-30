@@ -342,17 +342,17 @@ def stream_aggregated_emotions():
                 current_time = time.time()
                 
                 # Check for updates in the last 10 seconds
-                    cursor.execute("""
-                        SELECT 
-                            state_code,
-                            anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
+                cursor.execute("""
+                    SELECT 
+                        state_code,
+                        anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
                             anticipation_avg, trust_avg, disgust_avg,
                             sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
-                            tweet_count, last_updated
-                        FROM emotion_aggregates 
-                        WHERE last_updated > %s
-                        ORDER BY state_code
-                    """, (datetime.datetime.fromtimestamp(last_check - 10),))
+                        tweet_count, last_updated
+                    FROM emotion_aggregates 
+                    WHERE last_updated > %s
+                    ORDER BY state_code
+                """, (datetime.datetime.fromtimestamp(last_check - 10),))
                 
                 updated_rows = cursor.fetchall()
                 if updated_rows:
@@ -635,11 +635,11 @@ def get_emotion_time_series_data(emotion):
         query = f"""
         SELECT 
             state_code,
-            DATE(created_at) as date,
+            DATE(timestamp) as date,
             AVG({emotion}) as emotion_value
         FROM tweets 
         WHERE {emotion} IS NOT NULL
-        GROUP BY state_code, DATE(created_at)
+        GROUP BY state_code, DATE(timestamp)
         ORDER BY state_code, date
         """
         
@@ -682,14 +682,14 @@ def get_comparison_time_series_data(state1, state2, emotion):
         
         # Get daily emotion data for both states for the specific emotion
         query = f"""
-        SELECT 
-            state_code,
-            DATE(created_at) as date,
+            SELECT 
+                state_code,
+                DATE(timestamp) as date,
             AVG({emotion}) as emotion_value
-        FROM tweets 
+            FROM tweets 
         WHERE state_code IN ('{state1}', '{state2}')
         AND {emotion} IS NOT NULL
-        GROUP BY state_code, DATE(created_at)
+            GROUP BY state_code, DATE(timestamp)
         ORDER BY state_code, date
         """
         

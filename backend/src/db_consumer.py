@@ -135,7 +135,7 @@ class DatabaseConsumer:
             sys.exit(1)
 
     def store_tweet(self, tweet: Dict[str, Any]):
-        """Store tweet in database with emotion data"""
+        """Store tweet in database with new sentiment/emotion schema"""
         try:
             # Convert and validate data types EXPLICITLY
             tweet_id = int(tweet['id'])
@@ -152,7 +152,6 @@ class DatabaseConsumer:
             replies = int(tweet.get('replies', 0))
             views = int(tweet.get('views', 0))
             
-            # Convert emotion scores to floats (CRITICAL!)
             # Extract sentiment (3-way classification)
             sentiment = str(tweet.get('sentiment', 'neutral'))
             sentiment_confidence = float(tweet.get('sentiment_confidence', 0.0))
@@ -198,7 +197,7 @@ class DatabaseConsumer:
             
             # Log specific emotion values for debugging
             logger.system_event("EMOTION_VALUES_DEBUG", 
-                f"Tweet {tweet_id}: anger={anger}({type(anger)}), joy={joy}({type(joy)}), positive={positive}({type(positive)}), dominant={dominant_emotion}")
+                f"Tweet {tweet_id}: sentiment={sentiment}, anger={anger}, joy={joy}, dominant={dominant_emotion}")
             
             # Connect and execute
             conn = psycopg2.connect(**self.db_params)
@@ -207,12 +206,8 @@ class DatabaseConsumer:
             # Execute the SQL string directly
             cursor.execute(sql_query)
             
-            # Update emotion aggregates for this state
-            self.update_emotion_aggregates(cursor, tweet_id, state_code, {
-                'anger': anger, 'fear': fear, 'positive': positive, 'sadness': sadness,
-                'surprise': surprise, 'joy': joy, 'anticipation': anticipation,
-                'trust': trust, 'negative': negative, 'disgust': disgust
-            })
+            # Database triggers will automatically update emotion_aggregates
+            # No manual aggregation needed!
             
             conn.commit()
             conn.close()
@@ -222,68 +217,7 @@ class DatabaseConsumer:
             logger.error("DB_CONSUMER", f"Failed to store tweet {tweet.get('id', 'unknown')}: {e}")
             logger.error("DB_CONSUMER", f"Tweet data: {tweet}")
 
-    def update_emotion_aggregates(self, cursor, tweet_id, state_code, emotion_scores):
-        """Update emotion aggregates using running average formula"""
-        try:
-            # Get current aggregates for this state
-            cursor.execute("""
-                SELECT anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg, 
-                       positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg, 
-                       tweet_count, last_processed_tweet_id
-                FROM emotion_aggregates 
-                WHERE state_code = %s
-            """, (state_code,))
-            
-            result = cursor.fetchone()
-            
-            if result:
-                # Update existing aggregates using running average formula
-                (old_anger, old_joy, old_fear, old_sadness, old_surprise,
-                 old_positive, old_negative, old_anticipation, old_trust, old_disgust,
-                 old_count, last_id) = result
-                
-                new_count = old_count + 1
-                
-                # Calculate new running averages
-                new_anger = (old_anger * old_count + emotion_scores['anger']) / new_count
-                new_joy = (old_joy * old_count + emotion_scores['joy']) / new_count
-                new_fear = (old_fear * old_count + emotion_scores['fear']) / new_count
-                new_sadness = (old_sadness * old_count + emotion_scores['sadness']) / new_count
-                new_surprise = (old_surprise * old_count + emotion_scores['surprise']) / new_count
-                new_positive = (old_positive * old_count + emotion_scores['positive']) / new_count
-                new_negative = (old_negative * old_count + emotion_scores['negative']) / new_count
-                new_anticipation = (old_anticipation * old_count + emotion_scores['anticipation']) / new_count
-                new_trust = (old_trust * old_count + emotion_scores['trust']) / new_count
-                new_disgust = (old_disgust * old_count + emotion_scores['disgust']) / new_count
-                
-                # Update the aggregates
-                cursor.execute("""
-                    UPDATE emotion_aggregates 
-                    SET anger_avg = %s, joy_avg = %s, fear_avg = %s, sadness_avg = %s, surprise_avg = %s,
-                        positive_avg = %s, negative_avg = %s, anticipation_avg = %s, trust_avg = %s, disgust_avg = %s,
-                        tweet_count = %s, last_updated = CURRENT_TIMESTAMP, last_processed_tweet_id = %s
-                    WHERE state_code = %s
-                """, (new_anger, new_joy, new_fear, new_sadness, new_surprise,
-                      new_positive, new_negative, new_anticipation, new_trust, new_disgust,
-                      new_count, tweet_id, state_code))
-                
-            else:
-                # Insert new state aggregates
-                cursor.execute("""
-                    INSERT INTO emotion_aggregates (
-                        state_code, anger_avg, joy_avg, fear_avg, sadness_avg, surprise_avg,
-                        positive_avg, negative_avg, anticipation_avg, trust_avg, disgust_avg,
-                        tweet_count, last_updated, last_processed_tweet_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, CURRENT_TIMESTAMP, %s)
-                """, (state_code, emotion_scores['anger'], emotion_scores['joy'], emotion_scores['fear'],
-                      emotion_scores['sadness'], emotion_scores['surprise'], emotion_scores['positive'],
-                      emotion_scores['negative'], emotion_scores['anticipation'], emotion_scores['trust'],
-                      emotion_scores['disgust'], tweet_id))
-            
-            logger.system_event("AGGREGATES_UPDATED", f"Updated aggregates for {state_code}: tweet {tweet_id}")
-            
-        except Exception as e:
-            logger.error("DB_CONSUMER", f"Failed to update aggregates for {state_code}: {e}")
+    # Old aggregation methods removed - using database triggers now!
 
     def start_consuming(self):
         """Start consuming tweets and storing in database"""

@@ -72,7 +72,7 @@ class EmotionVisualization extends Component {
   }
   
   callBackendAPI = async () => {
-    const response = await fetch('http://localhost:9000/tweets/aggregated');
+    const response = await fetch('http://localhost:9000/data');
     const body = await response.json();
 
     if (response.status !== 200) {

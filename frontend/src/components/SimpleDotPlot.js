@@ -28,7 +28,7 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
   const isMobile = window.innerWidth < 768;
   const margin = { 
     top: 100, 
-    right: isMobile ? 300 : 320, 
+    right: isMobile ? 400 : 450, 
     bottom: 100, 
     left: 0 
   };
@@ -39,12 +39,13 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
 
   // Extract unique states and emotions
   const allStates = [...new Set(data.map(d => d.state))].sort();
-  const emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust', 'positive', 'negative'];
+  const emotions = ['anger', 'fear', 'sadness', 'surprise', 'joy', 'anticipation', 'trust', 'disgust'];
+  const sentimentCategories = ['positive', 'negative', 'neutral'];
 
   // Color scale
   const colorScale = d3.scaleOrdinal()
     .domain(emotions)
-    .range(['#FF0000', '#FFA500', '#008000', '#0000FF', '#FFC0CB', '#FFD700', '#9400D3', '#00FFFF', '#A9A9A9', '#808000']);
+    .range(['#FF0000', '#FFA500', '#008000', '#0000FF', '#FFC0CB', '#FFD700', '#9400D3', '#00FFFF']);
 
   // Process and filter data
   const processedData = useMemo(() => {
@@ -408,14 +409,14 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
       .style("stroke-dasharray", "2,2");
 
     // Right-side stacked bar chart for tweet distribution (neutral/positive/negative)
-    const sideChartWidth = 220;
-    const rightBarsX = width + 20;
+    const sideChartWidth = 200;
+    const rightBarsX = width + 30;
 
     const dataWithSums = processedData.map(d => ({
       ...d,
-      senti_neutral_count: parseInt(d.senti_neutral_count || 0, 10),
-      senti_positive_count: parseInt(d.senti_positive_count || 0, 10),
-      senti_negative_count: parseInt(d.senti_negative_count || 0, 10),
+      senti_neutral_count: parseInt(d.sentiment_neutral_count || 0, 10),
+      senti_positive_count: parseInt(d.sentiment_positive_count || 0, 10),
+      senti_negative_count: parseInt(d.sentiment_negative_count || 0, 10),
     })).map(d => ({
       ...d,
       sum: (d.senti_neutral_count || 0) + (d.senti_positive_count || 0) + (d.senti_negative_count || 0)
@@ -449,8 +450,8 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
           .data(dataWithSums)
           .join('rect')
           .attr('class', `bar-${sentiment}`)
-          .attr('y', d => scales.yScale(d.state) + (scales.yScale.bandwidth() - 10) / 2)
-          .attr('height', 10)
+          .attr('y', d => scales.yScale(d.state) + (scales.yScale.bandwidth() - 6) / 2)
+          .attr('height', 6)
           .attr('fill', colors[sentiment])
           .attr('opacity', 0.8)
           .on('mouseover', (event, d) => {
@@ -684,13 +685,13 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
         <div style={{
           position: 'absolute',
           top: '210px',
-          right: '20px',
+          right: '40px',
           background: 'rgba(0, 0, 0, 0.8)',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(255, 255, 255, 0.2)',
           borderRadius: '12px',
           padding: '20px',
-          width: window.innerWidth < 768 ? '280px' : '300px',
+          width: window.innerWidth < 768 ? '250px' : '280px',
           height: 'auto',
           overflow: 'visible',
           maxWidth: '90vw',
