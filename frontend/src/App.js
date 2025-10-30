@@ -5,6 +5,7 @@ import TweetDashboard from './components/TweetDashboard';
 import HistoricalTweets from './components/HistoricalTweets';
 import Analytics from './components/Analytics';
 import EmotionVisualization from './components/EmotionVisualization';
+import FloatingChatbot from './chatbot/FloatingChatbot';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('live');
@@ -132,6 +133,8 @@ function App() {
       <main className="App-main">
         {renderCurrentPage()}
       </main>
+
+      <FloatingChatbot />
     </div>
   );
 }

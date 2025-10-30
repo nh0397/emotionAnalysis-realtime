@@ -1,0 +1,258 @@
+import React, { useState } from 'react';
+import html2canvas from 'html2canvas';
+import './FloatingChatbot.css';
+
+export default function FloatingChatbot() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [question, setQuestion] = useState('');
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [includeScreenshot, setIncludeScreenshot] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+
+  const captureScreenshot = async () => {
+    setCapturing(true);
+    try {
+      const canvas = await html2canvas(document.body, {
+        allowTaint: true,
+        useCORS: true,
+        logging: false,
+        scale: 0.5
+      });
+      const base64 = canvas.toDataURL('image/png');
+      setCapturing(false);
+      return base64;
+    } catch (err) {
+      console.error('Screenshot failed:', err);
+      setCapturing(false);
+      return null;
+    }
+  };
+
+  const ask = async () => {
+    if (!question.trim()) return;
+
+    setLoading(true);
+    const userMessage = { 
+      type: 'question', 
+      text: question,
+      hasScreenshot: includeScreenshot 
+    };
+    setHistory(prev => [...prev, userMessage]);
+
+    let screenshot = null;
+    if (includeScreenshot) {
+      screenshot = await captureScreenshot();
+    }
+
+    try {
+      const endpoint = includeScreenshot ? '/chat/vision' : '/chat';
+      const payload = includeScreenshot 
+        ? { question: question.trim(), screenshot }
+        : { question: question.trim() };
+
+      const response = await fetch(`http://localhost:9000${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const botMessage = {
+        type: 'answer',
+        sql: data.sql,
+        rows: data.rows || [],
+        chartHint: data.chart_hint,
+        message: data.message
+      };
+
+      setHistory(prev => [...prev, botMessage]);
+      setQuestion('');
+      setIncludeScreenshot(false);
+    } catch (err) {
+      setHistory(prev => [...prev, { type: 'error', text: err.message }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      ask();
+    }
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+  };
+
+  return (
+    <>
+      {/* Floating Button */}
+      <div 
+        className={`chatbot-fab ${isOpen ? 'hidden' : ''}`}
+        onClick={() => setIsOpen(true)}
+        title="Ask TecViz AI"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2C6.48 2 2 6.48 2 12C2 13.93 2.6 15.72 3.6 17.2L2.05 21.95L6.8 20.4C8.28 21.4 10.07 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C10.33 20 8.77 19.48 7.47 18.6L7.1 18.35L4.55 19.05L5.25 16.55L4.97 16.15C4.06 14.83 3.5 13.23 3.5 11.5C3.5 7.36 6.86 4 11 4C15.14 4 18.5 7.36 18.5 11.5C18.5 15.64 15.14 19 11 19H12V20Z" fill="white"/>
+          <circle cx="8" cy="12" r="1" fill="white"/>
+          <circle cx="12" cy="12" r="1" fill="white"/>
+          <circle cx="16" cy="12" r="1" fill="white"/>
+        </svg>
+      </div>
+
+      {/* Chatbot Panel */}
+      {isOpen && (
+        <div className="chatbot-floating-panel">
+          {/* Header */}
+          <div className="chatbot-floating-header">
+            <div className="chatbot-header-content">
+              <h3>TecViz AI Assistant</h3>
+              <span className="chatbot-subtitle">Ask about your data or UI</span>
+            </div>
+            <div className="chatbot-header-actions">
+              {history.length > 0 && (
+                <button 
+                  className="chatbot-icon-btn" 
+                  onClick={clearHistory}
+                  title="Clear history"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              )}
+              <button 
+                className="chatbot-icon-btn" 
+                onClick={() => setIsOpen(false)}
+                title="Close"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path d="M18 6L6 18M6 6l12 12" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Chat History */}
+          <div className="chatbot-floating-history">
+            {history.length === 0 && (
+              <div className="chatbot-welcome">
+                <div className="welcome-icon">💬</div>
+                <h4>How can I help you?</h4>
+                <p>Ask questions about your emotion data or the UI:</p>
+                <div className="example-queries">
+                  <button className="example-query" onClick={() => setQuestion("Show daily average anger in CA for last 30 days")}>
+                    📊 Show daily anger in CA
+                  </button>
+                  <button className="example-query" onClick={() => setQuestion("What does this visualization show?")}>
+                    🎨 Explain this view
+                  </button>
+                  <button className="example-query" onClick={() => setQuestion("Which state has highest joy?")}>
+                    😊 Highest joy state
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {history.map((item, idx) => (
+              <div key={idx} className={`chat-message chat-${item.type}`}>
+                {item.type === 'question' && (
+                  <div className="message-bubble user-bubble">
+                    <div className="bubble-content">
+                      {item.text}
+                      {item.hasScreenshot && (
+                        <span className="screenshot-badge">📸 with screenshot</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {item.type === 'answer' && (
+                  <div className="message-bubble bot-bubble">
+                    <div className="bubble-content">
+                      {item.message && <p className="bot-text">{item.message}</p>}
+                      {item.sql && (
+                        <div className="sql-preview">
+                          <code>{item.sql}</code>
+                        </div>
+                      )}
+                      {item.rows && item.rows.length > 0 && (
+                        <div className="results-mini">
+                          <small>✓ {item.rows.length} result(s)</small>
+                        </div>
+                      )}
+                      {item.chartHint && (
+                        <div className="hint-badge">💡 {item.chartHint}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {item.type === 'error' && (
+                  <div className="message-bubble error-bubble">
+                    <div className="bubble-content">⚠️ {item.text}</div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {loading && (
+              <div className="chat-message chat-loading">
+                <div className="message-bubble bot-bubble">
+                  <div className="bubble-content">
+                    <div className="typing-indicator">
+                      <span></span><span></span><span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Input Footer */}
+          <div className="chatbot-floating-footer">
+            <div className="screenshot-toggle">
+              <label className="checkbox-container">
+                <input 
+                  type="checkbox" 
+                  checked={includeScreenshot}
+                  onChange={(e) => setIncludeScreenshot(e.target.checked)}
+                  disabled={loading}
+                />
+                <span className="checkmark"></span>
+                <span className="checkbox-label">
+                  📷 Include screenshot {capturing && '(capturing...)'}
+                </span>
+              </label>
+            </div>
+            <div className="input-row">
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Ask anything..."
+                disabled={loading}
+                rows={1}
+              />
+              <button 
+                onClick={ask}
+                disabled={loading || !question.trim()}
+                className="send-btn"
+              >
+                {loading ? '...' : '→'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
