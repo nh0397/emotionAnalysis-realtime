@@ -28,22 +28,65 @@ def classify_intent_smart(
     
     q_lower = question.lower().strip()
     
-    # ==== FAST PATH: OBVIOUS GREETINGS (avoid LLM call) ====
+    # ==== FAST PATH: OBVIOUS PATTERNS (avoid LLM call) ====
+    
+    # 1. Greetings and acknowledgments
     greetings = [
         'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening',
         'thanks', 'thank you', 'bye', 'goodbye', 'ok', 'okay', 'cool', 
         'nice', 'great', 'awesome', 'perfect', 'yes', 'no', 'yep', 'nope'
     ]
     
-    # Exact match or starts with greeting
     for greeting in greetings:
         if q_lower == greeting or q_lower.startswith(greeting + ' ') or q_lower.startswith(greeting + ','):
-            print(f"[INTENT] Fast path: '{question}' matched greeting '{greeting}' → smalltalk")
+            print(f"[intent_classifier.py:41] Fast path: '{question}' matched greeting '{greeting}' → smalltalk")
             return 'smalltalk', {'reason': 'greeting_detected', 'matched': greeting}
     
-    # Very short acknowledgments
     if len(q_lower.split()) <= 2 and q_lower in ['sure', 'k']:
         return 'smalltalk', {'reason': 'short_acknowledgment'}
+    
+    # 2. UI/Help questions - these should NEVER go to data_query
+    ui_patterns = [
+        'what is this page',
+        'what am i looking at',
+        'what does this page',
+        'what is this',
+        'explain this page',
+        'what page is this',
+        'what am i seeing',
+        'what does this show',
+        'how do i use this',
+        'how does this work',
+        'what can i do here',
+        'what is the history page',
+        'what is the live stream',
+        'what is the analytics',
+        'what is the emotion map'
+    ]
+    
+    for pattern in ui_patterns:
+        if pattern in q_lower:
+            print(f"[intent_classifier.py:56] Fast path: '{question}' matched UI pattern '{pattern}' → rag_query")
+            return 'rag_query', {'reason': 'ui_pattern_match', 'matched': pattern}
+    
+    # 3. Contextual UI questions (require conversation history)
+    contextual_ui_patterns = [
+        'and this one',
+        'what about this',
+        'and this page',
+        'this one',
+        'and here',
+        'what about here'
+    ]
+    
+    # Check if it's a contextual question AND we have recent UI questions in history
+    if any(pattern in q_lower for pattern in contextual_ui_patterns):
+        # Look for recent UI-related questions in history
+        if previous_queries:
+            recent_intents = [q.get('intent') for q in previous_queries[-3:]]
+            if 'rag_query' in recent_intents or any('page' in q.get('question', '').lower() for q in previous_queries[-2:]):
+                print(f"[intent_classifier.py:78] Fast path: '{question}' is contextual UI question → rag_query")
+                return 'rag_query', {'reason': 'contextual_ui_question', 'previous_context': True}
     
     # ==== LLM CLASSIFICATION (PRIMARY) ====
     intent, confidence = classify_with_llm(question, current_page, previous_queries)
@@ -104,8 +147,9 @@ CLASSIFY INTO ONE CATEGORY:
    - Questions like: "What's happening in X?", "Show me Y", "Compare A and B", "Highest Z"
    
 2. **rag_query** - User needs help with the UI or platform
-   - Asking about the interface ("what is this?", "how do I...?")
-   - Confused about what they're seeing
+   - Asking about the interface ("what is this page?", "what am I looking at?")
+   - Questions like "explain this", "what does this show?", "how do I use this?"
+   - Confused about what they're seeing on the current page
    - Asking for guidance or explanations of the visualization
    
 3. **smalltalk** - Casual conversation
@@ -117,8 +161,14 @@ THINK STEP-BY-STEP:
 2. Are they asking about specific emotions, states, or trends? → data_query
 3. Are they asking "what is this?" or "how do I use...?" → rag_query
 4. Just being casual? → smalltalk
+5. CONTEXTUAL: Are they saying "and this one", "this one" after asking about pages? → rag_query
 
-IMPORTANT: Be generous with data_query classification. Most questions are about data.
+IMPORTANT: 
+- Questions about "what is this page", "what am I looking at", "explain this" → rag_query
+- Contextual questions like "and this one?", "what about this?" → rag_query
+- Questions with specific states/emotions/data requests → data_query
+- Use conversation history to understand context
+- Be precise - don't default everything to data_query
 
 Respond with ONLY valid JSON (no markdown, no extra text):
 {{"intent": "data_query", "confidence": 0.90, "reasoning": "User asking about specific state data"}}"""
@@ -140,7 +190,7 @@ Respond with ONLY valid JSON (no markdown, no extra text):
         )
         
         if response.status_code != 200:
-            print(f"Ollama API error: {response.status_code}")
+            print(f"[intent_classifier.py:143] Ollama API error: {response.status_code}")
             return 'data_query', 0.5  # Default to data_query on error
         
         result_text = response.json().get("response", "").strip()
@@ -156,15 +206,15 @@ Respond with ONLY valid JSON (no markdown, no extra text):
         
         # Validate intent
         if intent not in ['data_query', 'rag_query', 'smalltalk']:
-            print(f"Invalid intent from LLM: {intent}, defaulting to data_query")
+            print(f"[intent_classifier.py:159] Invalid intent from LLM: {intent}, defaulting to data_query")
             intent = 'data_query'
             confidence = 0.5
         
-        print(f"LLM Classification: {intent} (confidence: {confidence}) - {reasoning}")
+        print(f"[intent_classifier.py:163] LLM Classification: {intent} (confidence: {confidence}) - {reasoning}")
         return intent, float(confidence)
         
     except json.JSONDecodeError as e:
-        print(f"JSON parse error: {e}, response: {result_text[:200]}")
+        print(f"[intent_classifier.py:167] JSON parse error: {e}, response: {result_text[:200]}")
         # Try fallback text parsing
         if 'response' in locals():
             response_lower = str(result_text).lower()
@@ -179,9 +229,9 @@ Respond with ONLY valid JSON (no markdown, no extra text):
         return 'data_query', 0.5
         
     except requests.exceptions.RequestException as e:
-        print(f"Ollama connection error: {e}")
+        print(f"[intent_classifier.py:182] Ollama connection error: {e}")
         return 'data_query', 0.5
         
     except Exception as e:
-        print(f"Unexpected error in LLM classification: {e}")
+        print(f"[intent_classifier.py:186] Unexpected error in LLM classification: {e}")
         return 'data_query', 0.5

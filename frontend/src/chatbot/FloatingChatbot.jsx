@@ -2,7 +2,47 @@ import React, { useState } from 'react';
 import html2canvas from 'html2canvas';
 import './FloatingChatbot.css';
 
-export default function FloatingChatbot() {
+// Simple markdown parser for bot responses
+function parseMarkdown(text) {
+  if (!text) return text;
+  
+  // Convert **bold** to <strong>
+  text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  
+  // Convert bullet points (• text) to proper list items
+  const lines = text.split('\n');
+  let inList = false;
+  let result = [];
+  
+  for (let line of lines) {
+    const trimmed = line.trim();
+    
+    if (trimmed.startsWith('•')) {
+      if (!inList) {
+        result.push('<ul>');
+        inList = true;
+      }
+      const listItem = trimmed.substring(1).trim();
+      result.push(`<li>${listItem}</li>`);
+    } else {
+      if (inList) {
+        result.push('</ul>');
+        inList = false;
+      }
+      if (trimmed) {
+        result.push(`<p>${trimmed}</p>`);
+      }
+    }
+  }
+  
+  if (inList) {
+    result.push('</ul>');
+  }
+  
+  return result.join('');
+}
+
+export default function FloatingChatbot({ currentPage = 'live' }) {
   const [isOpen, setIsOpen] = useState(false);
   const [question, setQuestion] = useState('');
   const [history, setHistory] = useState([]);
@@ -38,7 +78,12 @@ export default function FloatingChatbot() {
     };
     setHistory(prev => [...prev, userMessage]);
 
+    // Setup AbortController (no timeout - system is slow)
+    let controller;
+
     try {
+      controller = new AbortController();
+
       // Get or create session ID
       let sessionId = localStorage.getItem('chatSessionId');
       if (!sessionId) {
@@ -50,13 +95,14 @@ export default function FloatingChatbot() {
       const payload = {
         question: question.trim(),
         session_id: sessionId,
-        current_page: window.location.pathname
+        current_page: currentPage  // Use the actual page state from Navigation
       };
 
       const response = await fetch(`http://localhost:9000${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
 
       if (!response.ok) {
@@ -75,7 +121,8 @@ export default function FloatingChatbot() {
       setHistory(prev => [...prev, botMessage]);
       setQuestion('');
     } catch (err) {
-      setHistory(prev => [...prev, { type: 'error', text: err.message }]);
+      const message = err.message || 'Something went wrong. Please try again.';
+      setHistory(prev => [...prev, { type: 'error', text: message }]);
     } finally {
       setLoading(false);
     }
@@ -165,17 +212,40 @@ export default function FloatingChatbot() {
             {history.map((item, idx) => (
               <div key={idx} className={`chat-message chat-${item.type}`}>
                 {item.type === 'question' && (
-                  <div className="message-bubble user-bubble">
-                    <div className="bubble-content">
-                      {item.text}
+                  <div className="message-wrapper user-wrapper">
+                    <div className="message-icon user-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <div className="message-bubble user-bubble">
+                      <div className="bubble-content">
+                        {item.text}
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {item.type === 'answer' && (
-                  <div className="message-bubble bot-bubble">
-                    <div className="bubble-content">
-                      {item.message && <p className="bot-text">{item.message}</p>}
+                  <div className="message-wrapper bot-wrapper">
+                    <div className="message-icon bot-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <circle cx="12" cy="5" r="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="m12 7-3 5h6l-3-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <line x1="9" y1="9" x2="9.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <line x1="15" y1="9" x2="15.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <div className="message-bubble bot-bubble">
+                      <div className="bubble-content">
+                        {item.message && (
+                          <div 
+                            className="nl-response bot-text"
+                            dangerouslySetInnerHTML={{ __html: parseMarkdown(item.message) }}
+                          />
+                        )}
                       {item.sql && (
                         <div className="sql-preview">
                           <div className="sql-header">SQL Query:</div>
@@ -218,16 +288,26 @@ export default function FloatingChatbot() {
                           )}
                         </div>
                       )}
-                      {item.chartHint && (
-                        <div className="hint-badge">💡 Suggested: {item.chartHint}</div>
-                      )}
+                        {item.chartHint && !item.message.includes('💡') && (
+                          <div className="hint-badge">Suggested: {item.chartHint}</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {item.type === 'error' && (
-                  <div className="message-bubble error-bubble">
-                    <div className="bubble-content">⚠️ {item.text}</div>
+                  <div className="message-wrapper bot-wrapper">
+                    <div className="message-icon bot-icon error-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                        <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" strokeWidth="2"/>
+                        <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" strokeWidth="2"/>
+                      </svg>
+                    </div>
+                    <div className="message-bubble error-bubble">
+                      <div className="bubble-content">{item.text}</div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -235,10 +315,21 @@ export default function FloatingChatbot() {
 
             {loading && (
               <div className="chat-message chat-loading">
-                <div className="message-bubble bot-bubble">
-                  <div className="bubble-content">
-                    <div className="typing-indicator">
-                      <span></span><span></span><span></span>
+                <div className="message-wrapper bot-wrapper">
+                  <div className="message-icon bot-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="12" cy="5" r="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="m12 7-3 5h6l-3-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <line x1="9" y1="9" x2="9.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <line x1="15" y1="9" x2="15.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <div className="message-bubble bot-bubble">
+                    <div className="bubble-content">
+                      <div className="typing-indicator">
+                        <span></span><span></span><span></span>
+                      </div>
                     </div>
                   </div>
                 </div>

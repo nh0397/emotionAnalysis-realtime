@@ -138,7 +138,7 @@ function App() {
         {renderCurrentPage()}
       </main>
 
-      <FloatingChatbot />
+      <FloatingChatbot currentPage={currentPage} />
     </div>
   );
 }

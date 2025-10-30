@@ -106,7 +106,7 @@ def generate_sql(question: str, model: str = None) -> Optional[str]:
         )
         
         if response.status_code != 200:
-            print(f"Ollama error: {response.status_code} - {response.text}")
+            print(f"[nl2sql.py:109] Ollama error: {response.status_code} - {response.text}")
             return None
         
         result = response.json()
@@ -122,8 +122,8 @@ def generate_sql(question: str, model: str = None) -> Optional[str]:
         return sql if sql else None
         
     except requests.exceptions.RequestException as e:
-        print(f"Ollama connection error: {e}")
+        print(f"[nl2sql.py:125] Ollama connection error: {e}")
         return None
     except Exception as e:
-        print(f"NL→SQL generation error: {e}")
+        print(f"[nl2sql.py:128] NL→SQL generation error: {e}")
         return None
