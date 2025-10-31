@@ -77,7 +77,12 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
       type: 'question', 
       text: question
     };
-    setHistory(prev => [...prev, userMessage]);
+    // Add user message and immediate status notice so the user isn't kept waiting
+    const statusMessage = {
+      type: 'status',
+      text: 'Working on your query — this may take a moment. If the engine is busy, we\'ll fall back automatically.'
+    };
+    setHistory(prev => [...prev, userMessage, statusMessage]);
 
     // Setup AbortController (no timeout - system is slow)
     let controller;
@@ -119,11 +124,19 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
         message: data.message
       };
 
-      setHistory(prev => [...prev, botMessage]);
+      // Replace the status notice with the final answer
+      setHistory(prev => {
+        const filtered = prev.filter(m => m.type !== 'status');
+        return [...filtered, botMessage];
+      });
       setQuestion('');
     } catch (err) {
       const message = err.message || 'Something went wrong. Please try again.';
-      setHistory(prev => [...prev, { type: 'error', text: message }]);
+      // Replace the status notice with a friendly error
+      setHistory(prev => {
+        const filtered = prev.filter(m => m.type !== 'status');
+        return [...filtered, { type: 'error', text: 'The query engine is busy right now. Please try again in a moment.' }];
+      });
     } finally {
       setLoading(false);
     }
@@ -283,7 +296,7 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
                   </div>
                 )}
 
-                {item.type === 'error' && (
+                {(item.type === 'error' || item.type === 'status') && (
                   <div className="message-wrapper bot-wrapper">
                     <div className="message-icon bot-icon error-icon">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
