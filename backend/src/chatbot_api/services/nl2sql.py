@@ -4,8 +4,13 @@ from typing import Optional
 from chatbot_api.config import (
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
+    OLLAMA_MODEL_NL2SQL,
     OLLAMA_TIMEOUT,
-    OLLAMA_TEMP_SQL_GENERATION
+    OLLAMA_TEMP_SQL_GENERATION,
+    NL2SQL_PROVIDER,
+    GEMINI_API_KEY,
+    GEMINI_MODEL_NL2SQL,
+    GEMINI_TIMEOUT,
 )
 
 def load_system_prompt() -> str:
@@ -30,91 +35,94 @@ tweets(
   dominant_emotion, emotion_confidence, compound
 )
 
-FEW-SHOT EXAMPLES:
-
-Q: Show daily average anger in CA for last 30 days
-SQL: SELECT DATE(timestamp) AS date, AVG(anger) AS anger
-FROM tweets
-WHERE state_code='CA' AND timestamp >= CURRENT_DATE - INTERVAL '30 days'
-GROUP BY DATE(timestamp)
-ORDER BY date
-LIMIT 500;
-
-Q: Which state has the highest joy this week?
-SQL: SELECT state_code, AVG(joy) AS avg_joy
-FROM tweets
-WHERE timestamp >= CURRENT_DATE - INTERVAL '7 days'
-GROUP BY state_code
-ORDER BY avg_joy DESC
-LIMIT 1;
-
-Q: Sentiment split in TX last week
-SQL: SELECT DATE(timestamp) AS date,
-       SUM(CASE WHEN sentiment='positive' THEN 1 ELSE 0 END) AS positive,
-       SUM(CASE WHEN sentiment='negative' THEN 1 ELSE 0 END) AS negative,
-       SUM(CASE WHEN sentiment='neutral' THEN 1 ELSE 0 END) AS neutral
-FROM tweets
-WHERE state_code='TX' AND timestamp >= CURRENT_DATE - INTERVAL '7 days'
-GROUP BY DATE(timestamp)
-ORDER BY date
-LIMIT 500;
-
-Q: Top 5 states by fear this month
-SQL: SELECT state_code, state_name, AVG(fear) AS avg_fear
-FROM tweets
-WHERE timestamp >= DATE_TRUNC('month', CURRENT_DATE)
-GROUP BY state_code, state_name
-ORDER BY avg_fear DESC
-LIMIT 5;
-
-Q: Compare anger between CA and TX last 14 days
-SQL: SELECT state_code, DATE(timestamp) AS date, AVG(anger) AS avg_anger
-FROM tweets
-WHERE state_code IN ('CA', 'TX')
-  AND timestamp >= CURRENT_DATE - INTERVAL '14 days'
-GROUP BY state_code, DATE(timestamp)
-ORDER BY state_code, date
-LIMIT 500;
-
 Now convert this question to SQL:
 """
 
 # Import schema from config
 from ..schema_config import get_schema_context
+from .gemini import generate_sql_gemini
 
 def generate_sql(question: str, model: str = None) -> Optional[str]:
     """Generate SQL from natural language using Ollama with schema context"""
     if model is None:
-        model = OLLAMA_MODEL
+        model = OLLAMA_MODEL_NL2SQL if 'OLLAMA_MODEL_NL2SQL' in globals() else OLLAMA_MODEL
     
     try:
         system_prompt = load_system_prompt()
         schema_context = get_schema_context()
-        full_prompt = f"{system_prompt}\n{schema_context}\nQ: {question}\nSQL:"
-        
-        payload = {
-            "model": model,
-            "prompt": full_prompt,
-            "stream": False,
-            "options": {
-                "temperature": OLLAMA_TEMP_SQL_GENERATION,
-                "top_p": 0.9,
-                "stop": [";", "\n\n"]
-            }
-        }
-        
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json=payload,
-            timeout=OLLAMA_TIMEOUT
+        guardrails = (
+            "Return ONE Postgres SQL only. No prose. "
+            "Balance parentheses. Prefer CTEs for thresholds. "
+            "Do not use emotion_aggregates inside HAVING against tweet-level groups; "
+            "if you need a threshold, compute it from tweets in a CTE named threshold."
         )
+        full_prompt = f"{system_prompt}\n{schema_context}\nRULES: {guardrails}\nQ: {question}\nSQL:"
         
-        if response.status_code != 200:
-            print(f"[nl2sql.py:109] Ollama error: {response.status_code} - {response.text}")
-            return None
-        
-        result = response.json()
-        sql = result.get("response", "").strip()
+        # Debug selection
+        try:
+            print(f"[nl2sql] provider={NL2SQL_PROVIDER} model={model}")
+        except Exception:
+            pass
+
+        if NL2SQL_PROVIDER == "GEMINI":
+            sql = generate_sql_gemini(
+                api_key=GEMINI_API_KEY,
+                model=GEMINI_MODEL_NL2SQL,
+                question=question,
+                system_prompt=system_prompt,
+                schema_context=schema_context,
+                guardrails=guardrails,
+                timeout=GEMINI_TIMEOUT,
+            )
+            if not sql:
+                print("[nl2sql] Gemini returned no SQL; falling back to Ollama")
+                NL2SQL_provider_fallback = True
+            else:
+                NL2SQL_provider_fallback = False
+        else:
+            payload = {
+                "model": model,
+                "prompt": full_prompt,
+                "stream": False,
+                "options": {
+                    "temperature": OLLAMA_TEMP_SQL_GENERATION,
+                    "top_p": 0.9,
+                    "stop": [";", "\n\n"]
+                }
+            }
+            response = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json=payload,
+                timeout=OLLAMA_TIMEOUT
+            )
+            if response.status_code != 200:
+                print(f"[nl2sql.py:109] Ollama error: {response.status_code} - {response.text}")
+                return None
+            result = response.json()
+            sql = result.get("response", "").strip()
+
+        # If Gemini path failed, optionally try Ollama fallback
+        if NL2SQL_PROVIDER == "GEMINI" and (not sql):
+            payload = {
+                "model": model,
+                "prompt": full_prompt,
+                "stream": False,
+                "options": {
+                    "temperature": OLLAMA_TEMP_SQL_GENERATION,
+                    "top_p": 0.9,
+                    "stop": [";", "\n\n"]
+                }
+            }
+            response = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json=payload,
+                timeout=OLLAMA_TIMEOUT
+            )
+            if response.status_code != 200:
+                print(f"[nl2sql.py:fallback] Ollama error: {response.status_code} - {response.text}")
+                return None
+            result = response.json()
+            sql = result.get("response", "").strip()
         
         # Clean up the SQL
         sql = sql.replace("```sql", "").replace("```", "").strip()

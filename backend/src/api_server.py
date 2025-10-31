@@ -829,7 +829,7 @@ def compare_two_states_emotion(state1, state2, emotion):
 # Import chatbot services
 try:
     from chatbot_api.services.nl2sql import generate_sql
-    from chatbot_api.services.validator import validate_sql, add_limit_if_missing
+    from chatbot_api.services.validator import validate_sql, add_limit_if_missing, ensure_group_by
     from chatbot_api.services.db import run_sql, check_explain_cost
     from chatbot_api.services.chart_hints import infer_chart_type
     from chatbot_api.services.intent_classifier import classify_intent_smart
@@ -958,11 +958,13 @@ def handle_data_query(question, context_info):
             "sql": None,
             "rows": [],
             "chart_hint": None,
-            "message": "I couldn't generate a valid SQL query. Try being more specific about states, emotions, or time periods."
+            "message": "The query engine is temporarily unavailable. Our team is looking into it—please try again in a moment."
         }
     
     # Add LIMIT
     sql = add_limit_if_missing(sql, max_limit=MAX_SQL_LIMIT)
+    # Auto-fix GROUP BY consistency for Postgres
+    sql = ensure_group_by(sql)
     
     # Validate SQL
     is_valid, error = validate_sql(sql)
@@ -971,7 +973,7 @@ def handle_data_query(question, context_info):
             "sql": sql,
             "rows": [],
             "chart_hint": None,
-            "message": f"Query validation failed: {error}"
+            "message": "The query engine is temporarily unavailable. Our team is looking into it—please try again shortly."
         }
     
     # Execute SQL
@@ -981,7 +983,7 @@ def handle_data_query(question, context_info):
             "sql": sql,
             "rows": [],
             "chart_hint": None,
-            "message": f"Execution error: {exec_error}"
+            "message": "The query engine is currently experiencing an issue. We're on it—please retry in a bit."
         }
     
     # Generate chart hint

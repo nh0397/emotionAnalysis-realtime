@@ -13,56 +13,69 @@ DATABASE SCHEMA:
 
 === PRIMARY TABLE: tweets (Individual Tweet Data) ===
 GRANULARITY: One row per tweet (detailed, individual-level data)
-- tweet_id (text): Unique identifier for each tweet
-- username (text): Twitter username of the author
-- raw_text (text): Original tweet content/message
-- timestamp (timestamp): When the tweet was originally posted
-- state_code (text): US state abbreviation (CA, TX, NY, FL, etc.)
-- state_name (text): Full US state name (California, Texas, New York, etc.)
-- context (text): Topic/keyword context or category
-- likes (integer): Number of likes/hearts on the tweet
-- retweets (integer): Number of retweets/shares
-- replies (integer): Number of replies to the tweet
-- views (integer): Number of times the tweet was viewed
-- created_at (timestamp): When this record was inserted into our database
 
-EMOTION ANALYSIS COLUMNS (all float values between 0.0 and 1.0):
-- anger: Intensity of anger emotion for THIS SPECIFIC TWEET
-- joy: Intensity of joy/happiness emotion for THIS SPECIFIC TWEET
-- fear: Intensity of fear/anxiety emotion for THIS SPECIFIC TWEET
-- sadness: Intensity of sadness/depression emotion for THIS SPECIFIC TWEET
-- surprise: Intensity of surprise/shock emotion for THIS SPECIFIC TWEET
-- anticipation: Intensity of anticipation/expectation emotion for THIS SPECIFIC TWEET
-- trust: Intensity of trust/confidence emotion for THIS SPECIFIC TWEET
-- disgust: Intensity of disgust/revulsion emotion for THIS SPECIFIC TWEET
+Table "public.tweets"
+Columns:
+- id                   | integer (PK) | not null | default nextval('tweets_id_seq')
+- tweet_id             | bigint       | not null
+- username             | varchar(255) | not null
+- raw_text             | text         | not null
+- timestamp            | timestamp    | not null
+- created_at           | timestamp    |          | default CURRENT_TIMESTAMP
+- state_code           | char(2)      | not null
+- state_name           | varchar(255) | not null
+- context              | varchar(255) | not null
+- likes                | integer      |          | default 0
+- retweets             | integer      |          | default 0
+- replies              | integer      |          | default 0
+- views                | integer      |          | default 0
+- sentiment            | varchar(10)  | not null
+- sentiment_confidence | double       | not null
+- anger                | double       |          | default 0.0
+- fear                 | double       |          | default 0.0
+- sadness              | double       |          | default 0.0
+- surprise             | double       |          | default 0.0
+- joy                  | double       |          | default 0.0
+- anticipation         | double       |          | default 0.0
+- trust                | double       |          | default 0.0
+- disgust              | double       |          | default 0.0
+- dominant_emotion     | varchar(50)  |          |
+- emotion_confidence   | double       |          | default 0.0
+- compound             | double       |          | default 0.0
 
-SENTIMENT ANALYSIS COLUMN:
-- sentiment (text): Overall sentiment classification for THIS SPECIFIC TWEET
-  Values: 'positive', 'negative', 'neutral'
+Indexes:
+- tweets_pkey PRIMARY KEY (id)
+- idx_tweets_context (context)
+- idx_tweets_created_at (created_at)
 
 === AGGREGATED TABLE: emotion_aggregates (Pre-calculated State Summaries) ===
 GRANULARITY: One row per state (aggregated, summary-level data)
-- state_code (text): US state abbreviation
-- state_name (text): Full US state name
-- tweet_count (integer): Total number of tweets from this state
 
-PRE-CALCULATED EMOTION AVERAGES (float 0.0-1.0):
-- anger_avg: Average anger across all tweets from this state
-- joy_avg: Average joy across all tweets from this state
-- fear_avg: Average fear across all tweets from this state
-- sadness_avg: Average sadness across all tweets from this state
-- surprise_avg: Average surprise across all tweets from this state
-- anticipation_avg: Average anticipation across all tweets from this state
-- trust_avg: Average trust across all tweets from this state
-- disgust_avg: Average disgust across all tweets from this state
+Table "public.emotion_aggregates"
+Columns:
+- id                       | integer (PK) | not null | default nextval('emotion_aggregates_id_seq')
+- state_code               | char(2)      | not null
+- state_name               | varchar(255) | not null
+- sentiment_positive_count | integer      |          | default 0
+- sentiment_negative_count | integer      |          | default 0
+- sentiment_neutral_count  | integer      |          | default 0
+- sentiment_positive_avg   | double       |          | default 0.0
+- sentiment_negative_avg   | double       |          | default 0.0
+- sentiment_neutral_avg    | double       |          | default 0.0
+- anger_avg                | double       |          | default 0.0
+- fear_avg                 | double       |          | default 0.0
+- sadness_avg              | double       |          | default 0.0
+- surprise_avg             | double       |          | default 0.0
+- joy_avg                  | double       |          | default 0.0
+- anticipation_avg         | double       |          | default 0.0
+- trust_avg                | double       |          | default 0.0
+- disgust_avg              | double       |          | default 0.0
+- tweet_count              | integer      |          | default 0
+- last_updated             | timestamp    |          | default CURRENT_TIMESTAMP
 
-PRE-CALCULATED SENTIMENT COUNTS:
-- sentiment_positive_count: Number of positive tweets from this state
-- sentiment_negative_count: Number of negative tweets from this state
-- sentiment_neutral_count: Number of neutral tweets from this state
-
-METADATA:
-- last_updated (timestamp): When aggregates were last calculated
+Indexes:
+- emotion_aggregates_pkey PRIMARY KEY (id)
+- emotion_aggregates_state_code_key UNIQUE (state_code)
 
 === WHEN TO USE WHICH TABLE ===
 • Use 'tweets' for: Individual tweet analysis, detailed queries, time series, specific tweet searches
@@ -83,6 +96,25 @@ COMMON QUERY TEMPLATES:
 - Use pre-calculated averages: SELECT state_name, anger_avg FROM emotion_aggregates ORDER BY anger_avg DESC
 - Time series (tweets only): SELECT DATE(timestamp), AVG(anger) FROM tweets GROUP BY DATE(timestamp) ORDER BY DATE(timestamp)
 - State comparison: SELECT state_name, anger_avg, joy_avg FROM emotion_aggregates WHERE state_code IN ('CA', 'TX')
+ 
+=== QUERY RULES (PostgreSQL) ===
+• Return ONE valid SQL statement only; no explanations.
+• Keep parentheses balanced; avoid trailing or extra closing parentheses.
+• When using HAVING with a threshold, compute the threshold from the SAME table/filters using a CTE or scalar subquery, e.g.:
+  WITH threshold AS (
+    SELECT AVG(anger) AS avg_anger_threshold
+    FROM tweets
+    WHERE timestamp >= CURRENT_DATE - INTERVAL '7 days'
+      AND state_code IN ('CA','TX')
+  )
+  SELECT state_name
+  FROM tweets
+  WHERE timestamp >= CURRENT_DATE - INTERVAL '7 days'
+  GROUP BY state_name
+  HAVING AVG(anger) > (SELECT avg_anger_threshold FROM threshold)
+  LIMIT 500;
+• Do NOT compare aggregates from tweets to values from emotion_aggregates in HAVING unless you explicitly JOIN on state_code; prefer computing thresholds from tweets directly.
+• Use emotion_aggregates for direct state-level summaries (e.g., select anger_avg) without mixing into tweet-level HAVING.
 """
 
 # Table and column mappings for validation
