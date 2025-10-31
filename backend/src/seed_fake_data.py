@@ -103,24 +103,47 @@ def generate_record(next_id: int, state_code: str, state_name: str, when: dateti
     context = random.choice(contexts)
     raw_text = f"Synthetic tweet about {context} in {state_name} at {when.date()}"
 
-    # Each state gets consistent emotion values that don't change
-    # Use state code as seed for consistent values per state
+    # Create realistic emotion profiles with MUCH better spread
+    # Use state code as seed for consistent state-level patterns
     random.seed(hash(state_code))
     
-    # State-specific emotion intensity ranges
+    # Define state emotion profiles with dramatic differences
     state_hash = hash(state_code) % 100
-    if state_hash < 30:  # 30% of states: low intensity (0.1-0.5 range)
-        min_val, max_val = 0.1, 0.5
-    elif state_hash < 60:  # 30% of states: high intensity (0.5-0.9 range)
-        min_val, max_val = 0.5, 0.9
-    else:  # 40% of states: full range (0.1-0.9 range)
-        min_val, max_val = 0.1, 0.9
     
-    # Generate consistent emotions for this state
+    if state_hash < 15:  # 15% of states: Very low emotions (calm states)
+        base_range = (0.05, 0.25)
+        dominant_boost = 1.5
+    elif state_hash < 30:  # 15% of states: Low-medium emotions
+        base_range = (0.15, 0.45)
+        dominant_boost = 2.0
+    elif state_hash < 50:  # 20% of states: Medium emotions
+        base_range = (0.25, 0.65)
+        dominant_boost = 2.5
+    elif state_hash < 70:  # 20% of states: High emotions
+        base_range = (0.45, 0.85)
+        dominant_boost = 2.0
+    else:  # 30% of states: Very high emotions (intense states)
+        base_range = (0.65, 0.95)
+        dominant_boost = 1.8
+    
+    # Generate base emotions within the state's range
     emotions = {}
     for name in EMOTIONS:
-        # Fixed random value for this state (same for all entries)
-        emotions[name] = round(random.uniform(min_val, max_val), 1)
+        emotions[name] = round(random.uniform(base_range[0], base_range[1]), 3)
+    
+    # Pick 1-2 dominant emotions for this state and boost them significantly
+    dominant_count = random.choice([1, 2])
+    dominant_emotions = random.sample(EMOTIONS, dominant_count)
+    
+    for emotion in dominant_emotions:
+        # Boost dominant emotions but keep within 0.0-1.0 bounds
+        boosted = emotions[emotion] * dominant_boost
+        emotions[emotion] = round(min(boosted, 0.95), 3)
+    
+    # Ensure we have some variety - occasionally add random spikes
+    if random.random() < 0.3:  # 30% chance
+        spike_emotion = random.choice([e for e in EMOTIONS if e not in dominant_emotions])
+        emotions[spike_emotion] = round(random.uniform(0.7, 0.95), 3)
     
     # Reset random seed to avoid affecting other states
     random.seed()
