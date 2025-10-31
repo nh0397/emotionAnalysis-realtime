@@ -294,6 +294,29 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
     processedData.forEach((stateData) => {
       const stateY = scales.yScale(stateData.state);
       
+      // Always compute min/max from ALL eight emotions (original data),
+      // independent of current emotion filters
+      const originalRow = (data || []).find(d => d.state === stateData.state) || stateData;
+      const allEmotionValues = emotions
+        .map(e => parseFloat(originalRow[e] ?? 0) || 0)
+        .filter(v => !Number.isNaN(v));
+      if (allEmotionValues.length > 0) {
+        const minVal = d3.min(allEmotionValues);
+        const maxVal = d3.max(allEmotionValues);
+        if (minVal != null && maxVal != null) {
+          g.append("line")
+            .attr("class", "state-range-line")
+            .attr("x1", scales.xScale(minVal))
+            .attr("x2", scales.xScale(maxVal))
+            .attr("y1", stateY + scales.yScale.bandwidth() / 2)
+            .attr("y2", stateY + scales.yScale.bandwidth() / 2)
+            .attr("stroke", "rgba(255, 255, 255, 0.35)")
+            .attr("stroke-width", 3)
+            .attr("stroke-linecap", "round")
+            .lower();
+        }
+      }
+
       // Get all emotion values for this state
       const emotionValues = emotions
         .map(emotion => ({

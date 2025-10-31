@@ -1129,6 +1129,51 @@ def handle_rag_query(question, context_info):
 • Understand the live pulse of social media activity"""
     }
     
+    # Quick, question-aware helpers
+    def horizon_chart_help(current_pg: str) -> str:
+        where_text = "on the Emotion Map page" if current_pg != 'visualization' else "here on the Emotion Map"
+        return (
+            f"How to view Horizon Charts {where_text} (covering {date_range}):\n\n"
+            "1. Open the Emotion Map page.\n"
+            "2. In the chart selector, choose 'Horizon Chart'.\n"
+            "3. Pick an emotion (anger, joy, fear, sadness, surprise, anticipation, trust, disgust).\n"
+            "4. Optionally filter to a state or leave 'All' to view stacked bands.\n"
+            "5. Adjust the date range to widen or narrow the time window.\n"
+            "6. Hover to see daily values; darker bands indicate higher intensity.\n"
+            "7. If the chart looks flat, expand the date range or switch the emotion.\n\n"
+            "Notes:\n"
+            "- Horizon charts need multiple days of data per state (we distribute timestamps across ~180 days).\n"
+            "- For sparse states, try 'All states' or switch to 'Time Series' for a single-state line."
+        )
+
+    def interaction_help(current_pg: str) -> str:
+        page_name = {
+            'visualization': 'Emotion Map',
+            'metrics': 'Analytics',
+            'history': 'History',
+            'live': 'Live Stream'
+        }.get(current_pg, 'Emotion Map')
+
+        return (
+            f"Interactive features on the {page_name} page (covering {date_range}):\n\n"
+            "• Click to Compare (Radar): In Time Series compare mode, click two state lines to open a radar chart of all 8 emotions.\n"
+            "• Hover Tooltips: Hover any dot/line/band to see the daily average value and the state/emotion.\n"
+            "• Filters: Use state and emotion filters to narrow results; multiple selections supported.\n"
+            "• Legend Toggles: Click legend items to show/hide specific emotions for clarity.\n"
+            "• Reset: Use the 'Reset' control to clear filters and restore defaults.\n"
+        )
+
+    def compare_help() -> str:
+        return (
+            "How to compare two states (line → radar workflow):\n\n"
+            "1) Open Time Series → Compare mode.\n"
+            "2) Select the emotion to compare (e.g., anger).\n"
+            "3) Choose two states from the state picker (or click lines).\n"
+            "4) The chart shows both lines across time.\n"
+            "5) Click the lines to open a radar chart comparing all 8 emotions for those states.\n"
+            "6) Hover the radar to read exact averages per emotion.\n"
+        )
+
     # Get explanation
     print(f"[api_server.py:handle_rag_query] Looking for page '{current_page}' in explanations")
     print(f"[api_server.py:handle_rag_query] Available pages: {list(page_explanations.keys())}")
@@ -1140,7 +1185,13 @@ def handle_rag_query(question, context_info):
     contextual_phrases = ['and this one', 'this one', 'and this', 'what about this', 'and here']
     is_contextual = any(phrase in question_lower for phrase in contextual_phrases)
     
-    if is_contextual:
+    if 'horizon' in question_lower or 'horizon chart' in question_lower:
+        message = horizon_chart_help(current_page)
+    elif any(k in question_lower for k in ['radar', 'compare two', 'compare states', 'comparison', 'two states']):
+        message = compare_help()
+    elif any(k in question_lower for k in ['hover', 'tooltip', 'filter', 'legend', 'zoom', 'reset', 'export', 'interactive']):
+        message = interaction_help(current_page)
+    elif is_contextual:
         page_names = {
             'live': 'Live Stream',
             'history': 'History', 
