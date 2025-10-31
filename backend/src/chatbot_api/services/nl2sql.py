@@ -79,14 +79,18 @@ LIMIT 500;
 Now convert this question to SQL:
 """
 
+# Import schema from config
+from ..schema_config import get_schema_context
+
 def generate_sql(question: str, model: str = None) -> Optional[str]:
-    """Generate SQL from natural language using Ollama"""
+    """Generate SQL from natural language using Ollama with schema context"""
     if model is None:
         model = OLLAMA_MODEL
     
     try:
         system_prompt = load_system_prompt()
-        full_prompt = f"{system_prompt}\nQ: {question}\nSQL:"
+        schema_context = get_schema_context()
+        full_prompt = f"{system_prompt}\n{schema_context}\nQ: {question}\nSQL:"
         
         payload = {
             "model": model,

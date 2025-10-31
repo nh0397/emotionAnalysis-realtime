@@ -1,15 +1,10 @@
 import sqlglot
 from typing import Optional, Tuple
+from ..schema_config import VALID_TABLES, VALID_COLUMNS
 
-ALLOWED_TABLES = {"tweets"}
-ALLOWED_COLUMNS = {
-    "id", "tweet_id", "username", "raw_text", "timestamp",
-    "state_code", "state_name", "context",
-    "likes", "retweets", "replies", "views",
-    "sentiment", "sentiment_confidence",
-    "anger", "fear", "sadness", "surprise", "joy", "anticipation", "trust", "disgust",
-    "dominant_emotion", "emotion_confidence", "compound"
-}
+# Convert to sets for faster lookup
+ALLOWED_TABLES = set(VALID_TABLES)
+ALLOWED_COLUMNS = set(VALID_COLUMNS['tweets'])
 
 def validate_sql(sql: Optional[str]) -> Tuple[bool, Optional[str]]:
     """

@@ -343,11 +343,43 @@
   margin-bottom: 0;
 }
 
+/* Data Action Section */
+.data-action-section {
+  margin-top: 8px;
+}
+
+.data-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(100, 200, 255, 0.1);
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  border-radius: 16px;
+  padding: 4px 10px;
+  color: rgba(100, 200, 255, 0.9);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.data-action-btn:hover {
+  background: rgba(100, 200, 255, 0.15);
+  border-color: rgba(100, 200, 255, 0.3);
+  color: rgba(100, 200, 255, 1);
+  transform: translateY(-1px);
+}
+
+.data-action-btn .row-count {
+  color: rgba(100, 200, 255, 0.7);
+  font-size: 10px;
+}
+
 .sql-preview {
   background: rgba(0,0,0,0.3);
   padding: 12px;
   border-radius: 6px;
-  margin: 12px 0;
+  margin: 8px 0;
   overflow-x: auto;
   border-left: 3px solid rgba(100,200,255,0.5);
 }
@@ -435,6 +467,144 @@
   color: rgba(255,255,255,0.6);
   background: rgba(255,255,255,0.03);
   border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+/* SQL Modal */
+.sql-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.sql-modal {
+  background: linear-gradient(135deg, rgba(20, 20, 30, 0.95), rgba(40, 40, 60, 0.95));
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  width: 90vw;
+  max-width: 800px;
+  max-height: 80vh;
+  overflow: hidden;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+.sql-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.sql-modal-content {
+  padding: 20px;
+  max-height: calc(80vh - 80px);
+  overflow-y: auto;
+}
+
+.modal-section {
+  margin-bottom: 20px;
+}
+
+.modal-section:last-child {
+  margin-bottom: 0;
+}
+
+.modal-section h4 {
+  margin: 0 0 12px 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sql-preview-modal {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.sql-preview-modal code {
+  color: #61dafb;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+  display: block;
+}
+
+.results-table-modal {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.results-table-modal .results-table {
+  margin: 0;
+  border-radius: 0;
+}
+
+.hint-badge-modal {
+  background: rgba(100, 200, 255, 0.1);
+  border: 1px solid rgba(100, 200, 255, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  color: rgba(100, 200, 255, 0.9);
+  font-size: 13px;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .hint-badge {

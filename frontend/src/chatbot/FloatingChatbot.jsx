@@ -48,6 +48,7 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [sqlModal, setSqlModal] = useState(null); // Track which SQL modal is open
 
   const captureScreenshot = async () => {
     setCapturing(true);
@@ -137,6 +138,15 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
 
   const clearHistory = () => {
     setHistory([]);
+    setSqlModal(null);
+  };
+
+  const openSqlModal = (messageData, messageIndex) => {
+    setSqlModal({ ...messageData, index: messageIndex });
+  };
+
+  const closeSqlModal = () => {
+    setSqlModal(null);
   };
 
   return (
@@ -240,56 +250,33 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
                     </div>
                     <div className="message-bubble bot-bubble">
                       <div className="bubble-content">
+                        {/* Natural Language Response - Always Visible */}
                         {item.message && (
                           <div 
                             className="nl-response bot-text"
                             dangerouslySetInnerHTML={{ __html: parseMarkdown(item.message) }}
                           />
                         )}
-                      {item.sql && (
-                        <div className="sql-preview">
-                          <div className="sql-header">SQL Query:</div>
-                          <code>{item.sql}</code>
-                        </div>
-                      )}
-                      {item.rows && item.rows.length > 0 && (
-                        <div className="results-table-container">
-                          <div className="results-header">
-                            <span>Results ({item.rows.length} rows)</span>
+
+                        {/* Data Query Button - Show compact button if SQL/data exists */}
+                        {(item.sql || (item.rows && item.rows.length > 0)) && (
+                          <div className="data-action-section">
+                            <button 
+                              className="data-action-btn"
+                              onClick={() => openSqlModal(item, idx)}
+                              title="View query details and data"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+                                <path d="M9 9h6v6H9z" fill="currentColor"/>
+                                <path d="M16 3v4M8 3v4M3 11h18" stroke="currentColor" strokeWidth="2"/>
+                              </svg>
+                              <span>Query Details</span>
+                              {item.rows && item.rows.length > 0 && (
+                                <span className="row-count">({item.rows.length} rows)</span>
+                              )}
+                            </button>
                           </div>
-                          <div className="results-table-wrapper">
-                            <table className="results-table">
-                              <thead>
-                                <tr>
-                                  {Object.keys(item.rows[0]).map((col, i) => (
-                                    <th key={i}>{col}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {item.rows.slice(0, 10).map((row, i) => (
-                                  <tr key={i}>
-                                    {Object.values(row).map((val, j) => (
-                                      <td key={j}>{
-                                        typeof val === 'number' ? val.toFixed(3) :
-                                        typeof val === 'object' ? JSON.stringify(val) :
-                                        val
-                                      }</td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                          {item.rows.length > 10 && (
-                            <div className="results-footer">
-                              ... and {item.rows.length - 10} more rows
-                            </div>
-                          )}
-                        </div>
-                      )}
-                        {item.chartHint && !item.message.includes('💡') && (
-                          <div className="hint-badge">Suggested: {item.chartHint}</div>
                         )}
                       </div>
                     </div>
@@ -355,6 +342,78 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
               >
                 {loading ? '...' : '→'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SQL Data Modal */}
+      {sqlModal && (
+        <div className="sql-modal-overlay" onClick={closeSqlModal}>
+          <div className="sql-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sql-modal-header">
+              <div className="modal-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M9 9h6v6H9z" fill="currentColor"/>
+                  <path d="M16 3v4M8 3v4M3 11h18" stroke="currentColor" strokeWidth="2"/>
+                </svg>
+                <span>Query Details</span>
+              </div>
+              <button className="modal-close-btn" onClick={closeSqlModal}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            <div className="sql-modal-content">
+              {sqlModal.sql && (
+                <div className="modal-section">
+                  <h4>SQL Query</h4>
+                  <div className="sql-preview-modal">
+                    <code>{sqlModal.sql}</code>
+                  </div>
+                </div>
+              )}
+
+              {sqlModal.rows && sqlModal.rows.length > 0 && (
+                <div className="modal-section">
+                  <h4>Results ({sqlModal.rows.length} rows)</h4>
+                  <div className="results-table-modal">
+                    <table className="results-table">
+                      <thead>
+                        <tr>
+                          {Object.keys(sqlModal.rows[0]).map((col, i) => (
+                            <th key={i}>{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sqlModal.rows.map((row, i) => (
+                          <tr key={i}>
+                            {Object.values(row).map((val, j) => (
+                              <td key={j}>{
+                                typeof val === 'number' ? val.toFixed(3) :
+                                typeof val === 'object' ? JSON.stringify(val) :
+                                val
+                              }</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {sqlModal.chartHint && (
+                <div className="modal-section">
+                  <div className="hint-badge-modal">
+                    <strong>Visualization Suggestion:</strong> {sqlModal.chartHint}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
