@@ -185,7 +185,7 @@ class TweetGenerator:
 
 def console_demo():
     """Console demo mode - shows NLP results without Kafka"""
-    print("🚀 TecViz Tweet Generator with NLP Pipeline")
+    print("🚀 TecVis 2.0 Tweet Generator with NLP Pipeline")
     print("📊 Console Demo Mode - No Kafka/DB")
     print("=" * 60)
     

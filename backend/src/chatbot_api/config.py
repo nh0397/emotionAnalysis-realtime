@@ -1,5 +1,5 @@
 """
-Centralized configuration for TecViz Chatbot API
+Centralized configuration for TecVis 2.0 Chatbot API
 """
 
 import os

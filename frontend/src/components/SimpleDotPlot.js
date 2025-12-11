@@ -619,13 +619,27 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
     }
   }, [processedData, hoveredValue, selectedLines, scales, width, height, margin, emotions, colorScale, handleTickClick, handleLineClick]);
 
+  // Use state to track window size for responsive layout
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   return (
     <div ref={containerRef} style={{ 
       width: '100%', 
       height: 'calc(100vh - 40px)',
       position: 'relative',
       background: 'linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%)',
-      padding: '20px'
+      padding: '20px',
+      display: 'flex',
+      flexDirection: windowWidth < 1024 ? 'column' : 'row',
+      gap: '20px'
     }}>
       
       {/* Emotion Legend - Top, Selectable */}
@@ -694,31 +708,35 @@ const SimpleDotPlot = ({ data, dimensions, colorObjects }) => {
       <div 
         ref={svgRef} 
         style={{ 
-          width: '100%', 
+          width: windowWidth < 1024 ? '100%' : 'calc(100% - 320px)',
           height: '100%', 
           position: 'relative',
-          marginTop: '100px'
+          marginTop: '100px',
+          flex: windowWidth < 1024 ? '1' : '1 1 auto'
         }}
       >
         {/* Main Chart SVG - will be populated by D3 */}
       </div>
       
-      {/* Overlay Controls - Positioned over the chart, NOT overlapping legend */}
+      {/* Filter Controls - Responsive: columnar on small screens, sidebar on large */}
       {!selectedState && (
         <div style={{
-          position: 'absolute',
-          top: '210px',
-          right: '40px',
+          position: windowWidth >= 1024 ? 'absolute' : 'relative',
+          top: windowWidth >= 1024 ? '210px' : 'auto',
+          right: windowWidth >= 1024 ? '40px' : 'auto',
+          marginTop: windowWidth >= 1024 ? '0' : '20px',
+          marginBottom: windowWidth >= 1024 ? '0' : '20px',
           background: 'rgba(0, 0, 0, 0.8)',
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(255, 255, 255, 0.2)',
           borderRadius: '12px',
           padding: '20px',
-          width: window.innerWidth < 768 ? '250px' : '280px',
+          width: windowWidth < 768 ? '100%' : (windowWidth < 1024 ? '100%' : '280px'),
           height: 'auto',
           overflow: 'visible',
-          maxWidth: '90vw',
-          zIndex: 1000
+          maxWidth: windowWidth >= 1024 ? '280px' : '100%',
+          zIndex: windowWidth >= 1024 ? 1000 : 'auto',
+          flexShrink: 0
         }}>
           
           {/* State Filter */}

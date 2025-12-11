@@ -258,7 +258,7 @@ To contribute to this evaluation framework:
 
 ## 📄 License
 
-This evaluation framework is part of the TecViz emotion analysis project and follows the same licensing terms.
+This evaluation framework is part of the TecVis 2.0 emotion analysis project and follows the same licensing terms.
 
 ---
 

@@ -118,51 +118,35 @@ def generate_chart_gemini(
                 'generation_mode': 'code'
             }
         
-        # JSON mode: Parse JSON response
-        try:
-            cleaned = raw_response.replace("```json", "").replace("```", "").strip()
-            # Find first { and last }
-            start_idx = cleaned.find('{')
-            end_idx = cleaned.rfind('}')
-            
-            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                json_str = cleaned[start_idx:end_idx+1]
-                chart_data = json.loads(json_str)
-                
-                chart_type = chart_data.get('chart_type', '').lower()
-                suggest_filters = chart_data.get('suggest_filters', False)
-                filter_types = chart_data.get('filter_types', [])
-                
-                valid_types = ['line_chart', 'multi_line_chart', 'radar_chart', 'heatmap', 
-                              'grouped_bar_chart', 'bar_chart', 'horizontal_bar_chart', 'stacked_bar_chart', 'none']
-                
-                if chart_type in valid_types:
-                    if chart_type == 'none':
-                        print(f"[gemini] Determined no chart needed")
-                        return None
-                    
-                    print(f"[gemini] ✅ Chart parsed: chart_type={chart_type}, filters={filter_types}")
-                    return {
-                        'chart_type': chart_type,
-                        'suggest_filters': suggest_filters,
-                        'filter_types': filter_types if suggest_filters else []
-                    }
-        except (json.JSONDecodeError, AttributeError) as e:
-            print(f"[gemini] JSON parse failed: {e}")
-        
-        # Fallback text extraction
-        chart_type = raw_response.lower()
-        chart_type = chart_type.replace('"', '').replace("'", '').replace('\n', ' ').strip()
-        
+        # JSON mode: Extract chart_type using regex (more robust than JSON parsing)
+        # Gemini often returns malformed JSON, so we extract directly
         valid_types = ['line_chart', 'multi_line_chart', 'radar_chart', 'heatmap', 
-                      'grouped_bar_chart', 'bar_chart', 'horizontal_bar_chart', 'stacked_bar_chart']
+                      'grouped_bar_chart', 'bar_chart', 'horizontal_bar_chart', 
+                      'stacked_bar_chart', 'area_chart', 'pie_chart', 'none']
         
+        # Try to find chart_type in the response using multiple patterns
+        response_lower = raw_response.lower()
+        
+        # Pattern 1: chart_type: value or "chart_type": "value"
+        chart_match = re.search(r'chart_type["\s:]+([a-z_]+)', response_lower)
+        if chart_match:
+            chart_type = chart_match.group(1).strip()
+            if chart_type in valid_types:
+                if chart_type == 'none':
+                    print(f"[gemini] Determined no chart needed")
+                    return None
+                print(f"[gemini] ✅ Chart extracted via regex: {chart_type}")
+                return {'chart_type': chart_type, 'suggest_filters': False, 'filter_types': []}
+        
+        # Pattern 2: Just find any valid chart type mentioned
         for valid_type in valid_types:
-            if valid_type in chart_type:
-                print(f"[gemini] ✅ Chart substring match: {valid_type}")
-                return valid_type
+            if valid_type in response_lower:
+                if valid_type == 'none':
+                    return None
+                print(f"[gemini] ✅ Chart found via substring: {valid_type}")
+                return {'chart_type': valid_type, 'suggest_filters': False, 'filter_types': []}
         
-        print(f"[gemini] ❌ Could not parse chart response: '{chart_type[:100]}'")
+        print(f"[gemini] ❌ No valid chart type found in response: '{raw_response[:100]}'")
         return None
         
     except requests.exceptions.RequestException as e:
@@ -171,5 +155,3 @@ def generate_chart_gemini(
     except Exception as e:
         print(f"[gemini] parse error: {e}")
         return None
-
-

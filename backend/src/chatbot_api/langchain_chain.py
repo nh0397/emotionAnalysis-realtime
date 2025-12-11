@@ -154,20 +154,16 @@ CRITICAL RULES (MUST FOLLOW):
 2. ALL non-aggregated columns in SELECT must be in GROUP BY clause
 3. **CRITICAL: If you ORDER BY an aggregate (AVG, SUM, COUNT, etc.), you MUST include that aggregate in the SELECT clause**
    Example: If ORDER BY AVG(anger) DESC, then SELECT must include AVG(anger) AS avg_anger
-4. **CRITICAL: PostgreSQL does NOT allow column aliases in ORDER BY clause**
-   WRONG: SELECT ABS(x - y) AS diff ORDER BY diff
-   CORRECT: SELECT ABS(x - y) AS diff ORDER BY ABS(x - y)
-   OR: Wrap in subquery: SELECT * FROM (SELECT ABS(x - y) AS diff FROM ...) ORDER BY diff
-5. Use proper PostgreSQL syntax (no MySQL/Oracle syntax)
-6. Use CTEs (WITH clauses) for complex multi-step queries
-7. Use state_code (2-letter) for filtering, state_name for display
-8. ALWAYS include LIMIT clause (max 500 rows)
-9. CRITICAL: Use 'timestamp' column for ALL time-based queries (NOT 'created_at')
-10. Use proper date functions: DATE(timestamp), INTERVAL 'X days', CURRENT_DATE
-11. For time series: ORDER BY date/timestamp ASC
-12. For comparisons/rankings: ORDER BY metric DESC before LIMIT, AND include the metric in SELECT
-13. Use proper aggregate functions: AVG(), SUM(), COUNT(), MAX(), MIN(), STDDEV()
-14. When asking for "top N by X", SELECT both the entity AND the metric: SELECT state_name, AVG(anger) AS avg_anger
+4. Use proper PostgreSQL syntax (no MySQL/Oracle syntax)
+5. Use CTEs (WITH clauses) for complex multi-step queries
+6. Use state_code (2-letter) for filtering, state_name for display
+7. ALWAYS include LIMIT clause (max 500 rows)
+8. CRITICAL: Use 'timestamp' column for ALL time-based queries (NOT 'created_at')
+9. Use proper date functions: DATE(timestamp), INTERVAL 'X days', CURRENT_DATE
+10. For time series: ORDER BY date/timestamp ASC
+11. For comparisons/rankings: ORDER BY metric DESC before LIMIT, AND include the metric in SELECT
+12. Use proper aggregate functions: AVG(), SUM(), COUNT(), MAX(), MIN(), STDDEV()
+13. When asking for "top N by X", SELECT both the entity AND the metric: SELECT state_name, AVG(anger) AS avg_anger
 
 {error_feedback}
 
@@ -386,15 +382,21 @@ def run_analytics_pipeline(
     
     # Step 4: Query Optimization & Validation
     print(f"[PIPELINE] 🔧 STEP 4: SQL Optimization & Validation")
-    from chatbot_api.services.validator import ensure_order_by_in_select, fix_order_by_alias_references
-    sql = add_limit_if_missing(sql, max_limit=MAX_SQL_LIMIT)
-    print(f"[PIPELINE] ✓ Added LIMIT if missing")
+    from chatbot_api.services.validator import ensure_order_by_in_select
+    
     sql = ensure_group_by(sql)
     print(f"[PIPELINE] ✓ Ensured GROUP BY")
+    
     sql = ensure_order_by_in_select(sql)  # CRITICAL: Add missing ORDER BY columns to SELECT
     print(f"[PIPELINE] ✓ Fixed ORDER BY in SELECT")
-    sql = fix_order_by_alias_references(sql)  # CRITICAL: Fix ORDER BY alias references (PostgreSQL doesn't allow aliases in ORDER BY)
-    print(f"[PIPELINE] ✓ Fixed ORDER BY alias references")
+    
+    # NOTE: PostgreSQL DOES support aliases in ORDER BY, so we don't need to expand them.
+    # forcing expansion often causes syntax errors (e.g. tuple comparisons).
+    # sql = fix_order_by_alias_references(sql) 
+    
+    # Add LIMIT last to ensure it's at the very end
+    sql = add_limit_if_missing(sql, max_limit=MAX_SQL_LIMIT)
+    print(f"[PIPELINE] ✓ Added LIMIT if missing")
     
     # Optional: Query optimization based on complexity
     if query_complexity == 'high':
@@ -426,32 +428,22 @@ def run_analytics_pipeline(
         }
     print(f"[PIPELINE] ✓ Data fetched: {len(rows)} rows")
     
-    # 🎨 STEP 6: LLM Chart Decision (Smart Chart Generation)
-    print(f"[PIPELINE] 🎨 STEP 6: Smart Chart Generation")
+    # 🎨 STEP 6: Chart Selection (HEURISTIC ONLY - FAST)
+    print(f"[PIPELINE] 🎨 STEP 6: Chart Selection (using heuristic)")
     
-    # Use the new smart chart generator
-    chart_data = suggest_chart_with_llm(sql, rows, question)
+    chart_hint = infer_chart_type(sql, rows, question)
+    if isinstance(chart_hint, dict):
+        chart_hint = chart_hint.get('chart_type')
     
-    chart_hint = None
     chart_config = None
     chart_reasoning = None
     chart_code = None
     
-    if chart_data:
-        chart_hint = chart_data.get('chart_type')
-        chart_config = chart_data.get('chart_config')
-        chart_reasoning = chart_data.get('reasoning')
-        chart_code = chart_data.get('code')
-        print(f"[PIPELINE] ✓ Smart Chart: Type={chart_hint}, Reasoning={chart_reasoning[:50]}...")
-    else:
-        # Fallback to legacy heuristic if LLM fails
-        print(f"[PIPELINE] ⚠ Smart chart generation failed, falling back to heuristics")
-        chart_hint = infer_chart_type(sql, rows, question)
-        if isinstance(chart_hint, dict):
-            chart_hint = chart_hint.get('chart_type')
+    print(f"[PIPELINE] ✓ Chart selected: {chart_hint}")
     
     # Step 7: Generate NL Response
-    print(f"[PIPELINE] 💬 STEP 7: Generate NL Response")
+    print(f"[PIPELINE] 💬 STEP 7: Generate NL Response (chart_hint={chart_hint})")
+    print(f"[PIPELINE] ⏳ Calling generate_nl_response... (this may be slow if using Ollama)")
     nl_message = generate_nl_response(question, sql, rows, chart_hint, current_page)
     print(f"[PIPELINE] ✓ NL response generated")
     
@@ -480,9 +472,10 @@ def run_analytics_pipeline(
     })
     print(f"[PIPELINE] ✓ Memory updated")
     
+    
     print(f"[PIPELINE] ✅ Pipeline completed successfully!")
     
-    return {
+    result = {
         "sql": sql,
         "rows": rows,
         "chart_hint": chart_hint,
@@ -493,4 +486,13 @@ def run_analytics_pipeline(
         "message": nl_message,
         "is_contextual": context is not None
     }
+    
+    print(f"[PIPELINE] 📤 RETURNING TO FRONTEND:")
+    print(f"[PIPELINE]   - Rows: {len(rows)}")
+    print(f"[PIPELINE]   - chart_hint: {chart_hint}")
+    print(f"[PIPELINE]   - auto_show_viz: {auto_show_viz}")
+    print(f"[PIPELINE]   - message length: {len(nl_message) if nl_message else 0}")
+    
+    return result
+
 

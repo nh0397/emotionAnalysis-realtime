@@ -42,6 +42,15 @@ Now convert this question to SQL:
 from ..schema_config import get_schema_context
 from .gemini import generate_sql_gemini
 
+# Module-level notice flag to inform callers about provider conditions
+LAST_NOTICE = None  # e.g., 'gemini_rate_limited'
+
+def get_last_notice():
+    global LAST_NOTICE
+    val = LAST_NOTICE
+    LAST_NOTICE = None
+    return val
+
 def generate_sql(question: str, model: str = None) -> Optional[str]:
     """Generate SQL from natural language using Ollama with schema context"""
     if model is None:
@@ -53,6 +62,9 @@ def generate_sql(question: str, model: str = None) -> Optional[str]:
         guardrails = (
             "Return ONE Postgres SQL only. No prose. "
             "Balance parentheses. Prefer CTEs for thresholds. "
+            "Every selected non-aggregate column must be in GROUP BY. "
+            "For time series using DATE(timestamp) AS date, ALWAYS add ORDER BY date ASC. "
+            "For top-N comparisons, ORDER BY the metric DESC before LIMIT. "
             "Do not use emotion_aggregates inside HAVING against tweet-level groups; "
             "if you need a threshold, compute it from tweets in a CTE named threshold."
         )
@@ -76,6 +88,10 @@ def generate_sql(question: str, model: str = None) -> Optional[str]:
             )
             if not sql:
                 print("[nl2sql] Gemini returned no SQL; falling back to Ollama")
+                # Mark rate-limit or generic fallback
+                global LAST_NOTICE
+                if GEMINI_API_KEY:
+                    LAST_NOTICE = LAST_NOTICE or 'gemini_fallback'
                 NL2SQL_provider_fallback = True
             else:
                 NL2SQL_provider_fallback = False

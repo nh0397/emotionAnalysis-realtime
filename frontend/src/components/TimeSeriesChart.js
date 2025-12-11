@@ -173,6 +173,20 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         filter(d => d.s1 != null && d.s2 != null).
         map(d => ({ date: d.date, diff: +(d.s1 - d.s2).toFixed(4) }));
   
+      // Calculate dynamic domain based on actual data, always symmetric around 0
+      const diffExtent = d3.extent(diffSeries, d => d.diff);
+      const diffMin = diffExtent[0] || 0;
+      const diffMax = diffExtent[1] || 0;
+      // Find the maximum absolute difference to ensure symmetry
+      const maxAbsDiff = Math.max(Math.abs(diffMin), Math.abs(diffMax));
+      
+      // Round up to nearest 0.2 increment, with a minimum of 0.2
+      const increment = 0.2;
+      const roundedMax = Math.ceil(maxAbsDiff / increment) * increment;
+      // Always symmetric: if max is 0.4, domain is [-0.4, 0.4]
+      const yDomainMax = Math.max(0.2, roundedMax);
+      const yDomainMin = -yDomainMax; // Always equal and opposite
+  
       const reducedHeight = Math.max(220, Math.round(height / 2)); // Taller diff chart for visibility
   
       svg.attr("width", width + margin.left + margin.right)
@@ -187,19 +201,23 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .range([0, width]);
   
       const yScale = d3.scaleLinear()
-        .domain([-0.25, 0.25])
+        .domain([yDomainMin, yDomainMax])
         .range([reducedHeight, 0]);
   
       const chartGroup = svg.append("g")
         .attr("transform", `translate(${margin.left}, ${margin.top})`);
   
-      // Draw Y-Axis first (to ensure visibility)
-      const yAxisTicks = [-0.25, -0.2, -0.1, 0, 0.1, 0.2, 0.25];
+      // Generate ticks in increments of 0.2
+      const yAxisTicks = [];
+      for (let i = yDomainMin; i <= yDomainMax; i += increment) {
+        yAxisTicks.push(Math.round(i * 100) / 100); // Round to 2 decimal places
+      }
       chartGroup.append("g")
         .call(d3.axisLeft(yScale).tickValues(yAxisTicks).tickFormat((d) => d.toFixed(2)))
         .style("z-index", 10)
         .selectAll("text")
         .style("font-size", "12px")
+        .style("fill", "#ffffff")
         .style("font-weight", "bold");
 
       // Horizontal grid lines
@@ -248,15 +266,19 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .attr("dy", "0.5em")
         .attr("transform", "rotate(30)")
         .style("text-anchor", "start")
-        .style("font-size", "10px");
+        .style("font-size", "10px")
+        .style("fill", "#ffffff");
   
       // Labels and zero line
       chartGroup.append("line")
         .attr("x1", 0).attr("x2", width)
         .attr("y1", yScale(0)).attr("y2", yScale(0))
         .attr("stroke", "#aaa").attr("stroke-dasharray", "2,2");
-      chartGroup.append("text").attr("x", 10).attr("y", yScale(0.35)).text(selectedState1).style("font-size", "12px").style("font-weight", "bold");
-      chartGroup.append("text").attr("x", 10).attr("y", yScale(-0.35)).text(selectedState2).style("font-size", "12px").style("font-weight", "bold");
+      // Position labels at 70% of domain
+      const labelY1 = yScale(yDomainMax * 0.7);
+      const labelY2 = yScale(yDomainMin * 0.7);
+      chartGroup.append("text").attr("x", 10).attr("y", labelY1).text(selectedState1).style("font-size", "12px").style("fill", "#ffffff").style("font-weight", "bold");
+      chartGroup.append("text").attr("x", 10).attr("y", labelY2).text(selectedState2).style("font-size", "12px").style("fill", "#ffffff").style("font-weight", "bold");
   
       return () => tooltip.remove();
     }
@@ -312,12 +334,14 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .attr("transform", "rotate(30)")
         .style("text-anchor", "start")
         .style("font-size", "8px")
+        .style("fill", "#ffffff")
 
       // Y-Axis
       chartGroup.append("g")
         .call(d3.axisLeft(yScale).tickValues([0, 0.1, 0.2]).tickFormat(d => d.toFixed(1)))
         .selectAll("text")
         .style("font-size", "8px")
+        .style("fill", "#ffffff")
         .style("z-index", "2");
 
       // Horizon chart layers
@@ -349,7 +373,7 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .attr("y", -5)
         .text(isTab1 ? item.charAt(0).toUpperCase() + item.slice(1) : item)
         .style("font-size", "10px")
-        .attr("fill", "black")
+        .attr("fill", "#ffffff")
         .style("font-weight", "bold");
     });
 
@@ -389,117 +413,100 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
 
       {/* Tab Content */}
       {activeTab === 1 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <select
-            className="state-dropdown"
-            value={currentState}
-            onChange={(e) => {
-              setCurrentState(e.target.value);
-              fetchTimeSeriesData(e.target.value);
-            }}
-          >
-            {allStates.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </select>
-          <div
-            style={{
-              maxHeight: "600px", // Set the height for the scrollable container
-              overflowY: "auto", // Enable vertical scrolling
-              border: "1px solid #ccc",
-              padding: "10px"
-            }}
-          >
+        <div className="tab-content-wrapper">
+          <div className="tab-controls">
+            <select
+              className="state-dropdown"
+              value={currentState}
+              onChange={(e) => {
+                setCurrentState(e.target.value);
+                fetchTimeSeriesData(e.target.value);
+              }}
+            >
+              {allStates.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="tab-chart-container">
             <svg ref={svgRef}></svg>
           </div>
         </div>
       )}
       {activeTab === 2 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <select
-            className="state-dropdown"
-            value={selectedEmotion}
-            onChange={(e) => {
-              setSelectedEmotion(e.target.value);
-              fetchEmotionTimeSeriesData(e.target.value);
-            }}
-          >
-            {emotions.map((emotion) => (
-              <option key={emotion} value={emotion}>
-                {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
-              </option>
-            ))}
-          </select>
-          <div
-            style={{
-              maxHeight: "600px", // Set the height for the scrollable container
-              overflowY: "auto", // Enable vertical scrolling
-              border: "1px solid #ccc",
-              padding: "10px"
-            }}
-          >
+        <div className="tab-content-wrapper">
+          <div className="tab-controls">
+            <select
+              className="state-dropdown"
+              value={selectedEmotion}
+              onChange={(e) => {
+                setSelectedEmotion(e.target.value);
+                fetchEmotionTimeSeriesData(e.target.value);
+              }}
+            >
+              {emotions.map((emotion) => (
+                <option key={emotion} value={emotion}>
+                  {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="tab-chart-container">
             <svg ref={svgRef}></svg>
           </div>
         </div>
       )}
       {activeTab === 3 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
-          <div style={{ display: "flex", flexDirection: "row", gap: "10px" }}>
+        <div className="tab-content-wrapper">
+          <div className="tab-controls">
+            <div className="tab-controls-row">
+              <select
+                className="state-dropdown"
+                value={selectedState1}
+                onChange={(e) => {
+                  setSelectedState1(e.target.value);
+                  fetchComparisonData(e.target.value, selectedState2, selectedEmotion);
+                }}
+              >
+                {allStates.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="state-dropdown"
+                value={selectedState2}
+                onChange={(e) => {
+                  setSelectedState2(e.target.value);
+                  fetchComparisonData(selectedState1, e.target.value, selectedEmotion);
+                }}
+              >
+                {allStates.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+            </div>
             <select
               className="state-dropdown"
-              value={selectedState1}
+              value={selectedEmotion}
               onChange={(e) => {
-                setSelectedState1(e.target.value);
-                fetchComparisonData(e.target.value, selectedState2, selectedEmotion);
+                setSelectedEmotion(e.target.value);
+                fetchComparisonData(selectedState1, selectedState2, e.target.value);
               }}
             >
-              {allStates.map((state) => (
-                <option key={state} value={state}>
-                  {state}
+              {emotions.map((emotion) => (
+                <option key={emotion} value={emotion}>
+                  {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
                 </option>
               ))}
             </select>
-            <select
-              className="state-dropdown"
-              value={selectedState2}
-              onChange={(e) => {
-                setSelectedState2(e.target.value);
-                fetchComparisonData(selectedState1, e.target.value, selectedEmotion);
-              }}
-            >
-              {allStates.map((state) => (
-                <option key={state} value={state}>
-                  {state}
-                </option>
-              ))}
-            </select>
-            <select
-            className="state-dropdown"
-            value={selectedEmotion}
-            onChange={(e) => {
-              setSelectedEmotion(e.target.value);
-              fetchComparisonData(selectedState1, selectedState2, e.target.value);
-            }}
-            style={{ marginLeft: "auto" }}
-          >
-            {emotions.map((emotion) => (
-              <option key={emotion} value={emotion}>
-                {emotion.charAt(0).toUpperCase() + emotion.slice(1)}
-              </option>
-            ))}
-          </select>
           </div>
-          <div
-            style={{
-              maxHeight: "900px",
-              overflowY: "auto",
-              border: "1px solid #ccc",
-              padding: "10px",
-              width: "100%",
-            }}
-          >
+          <div className="tab-chart-container" style={{ maxHeight: "900px" }}>
             <svg ref={svgRef}></svg>
           </div>
         </div>

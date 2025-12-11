@@ -1,6 +1,6 @@
 # Backend Services
 
-This directory contains all backend services for the TecViz real-time analytics platform.
+This directory contains all backend services for the TecVis 2.0 real-time analytics platform.
 
 ## Architecture
 

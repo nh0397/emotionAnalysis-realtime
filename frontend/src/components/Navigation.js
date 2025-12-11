@@ -13,7 +13,7 @@ function Navigation({ currentPage, onPageChange }) {
     <nav className="navigation">
       <div className="header-container">
         <div className="nav-header">
-          <h1 className="app-title">TecViz</h1>
+          <h1 className="app-title">TecVis 2.0</h1>
           <p className="app-subtitle">The Real Time Analytics Platform</p>
         </div>
         

@@ -6,6 +6,8 @@ python-dotenv==1.0.1
 requests==2.31.0
 six==1.16.0
 ollama==0.1.6
+langchain==0.1.0
+langchain-community==0.0.10
 # NLP Pipeline Dependencies
 torch>=2.0.0
 transformers>=4.30.0

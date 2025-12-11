@@ -4,7 +4,7 @@ import requests
 from typing import Tuple, Optional, List, Dict
 from chatbot_api.config import (
     OLLAMA_BASE_URL, 
-    OLLAMA_MODEL, 
+    OLLAMA_MODEL_INTENT, 
     OLLAMA_TIMEOUT,
     OLLAMA_TEMP_CLASSIFICATION
 )
@@ -19,7 +19,7 @@ def classify_intent_smart(
     LLM-first intent classification with minimal hardcoded rules.
     
     Returns: (intent, context)
-    intent: 'smalltalk', 'data_query', 'rag_query'
+    intent: 'smalltalk', 'data_query'
     context: additional routing information
     """
     
@@ -45,7 +45,7 @@ def classify_intent_smart(
     if len(q_lower.split()) <= 2 and q_lower in ['sure', 'k']:
         return 'smalltalk', {'reason': 'short_acknowledgment'}
     
-    # 2. UI/Help questions - these should NEVER go to data_query
+    # 2. UI/Help questions - route to smalltalk (simple responses)
     ui_patterns = [
         'what is this page',
         'what am i looking at',
@@ -66,27 +66,8 @@ def classify_intent_smart(
     
     for pattern in ui_patterns:
         if pattern in q_lower:
-            print(f"[intent_classifier.py:56] Fast path: '{question}' matched UI pattern '{pattern}' → rag_query")
-            return 'rag_query', {'reason': 'ui_pattern_match', 'matched': pattern}
-    
-    # 3. Contextual UI questions (require conversation history)
-    contextual_ui_patterns = [
-        'and this one',
-        'what about this',
-        'and this page',
-        'this one',
-        'and here',
-        'what about here'
-    ]
-    
-    # Check if it's a contextual question AND we have recent UI questions in history
-    if any(pattern in q_lower for pattern in contextual_ui_patterns):
-        # Look for recent UI-related questions in history
-        if previous_queries:
-            recent_intents = [q.get('intent') for q in previous_queries[-3:]]
-            if 'rag_query' in recent_intents or any('page' in q.get('question', '').lower() for q in previous_queries[-2:]):
-                print(f"[intent_classifier.py:78] Fast path: '{question}' is contextual UI question → rag_query")
-                return 'rag_query', {'reason': 'contextual_ui_question', 'previous_context': True}
+            print(f"[intent_classifier.py] Fast path: '{question}' matched UI pattern '{pattern}' → smalltalk")
+            return 'smalltalk', {'reason': 'ui_pattern_match', 'matched': pattern}
     
     # ==== LLM CLASSIFICATION (PRIMARY) ====
     intent, confidence = classify_with_llm(question, current_page, previous_queries)
@@ -128,9 +109,9 @@ def classify_with_llm(
     
     context = "\n".join(context_parts) if context_parts else "No additional context"
     
-    prompt = f"""You are an intent classifier for TecViz, an emotion analytics platform.
+    prompt = f"""You are an intent classifier for TecVis 2.0, an emotion analytics platform.
 
-TecViz shows emotion data (anger, joy, fear, sadness, surprise, anticipation, trust, disgust) across US states.
+TecVis 2.0 shows emotion data (anger, joy, fear, sadness, surprise, anticipation, trust, disgust) across US states.
 Users can query data by state, emotion, time period, or ask for help with the interface.
 
 CONTEXT:
@@ -145,29 +126,29 @@ CLASSIFY INTO ONE CATEGORY:
    - Asking about emotions (anger, joy, fear, etc.)
    - Asking for trends, comparisons, statistics
    - Questions like: "What's happening in X?", "Show me Y", "Compare A and B", "Highest Z"
+   - Visualization requests: "plot this", "chart it", "help me plot", "visualize this"
    
-2. **rag_query** - User needs help with the UI or platform
-   - Asking about the interface ("what is this page?", "what am I looking at?")
-   - Questions like "explain this", "what does this show?", "how do I use this?"
-   - Confused about what they're seeing on the current page
-   - Asking for guidance or explanations of the visualization
-   
-3. **smalltalk** - Casual conversation
+2. **smalltalk** - Casual conversation or UI help
    - Greetings, thanks, acknowledgments
    - General chitchat
+   - UI help questions: "what is this page?", "how do I use this?", "explain this"
 
 THINK STEP-BY-STEP:
-1. Is the user asking for DATA/ANALYTICS or HELP/EXPLANATION?
-2. Are they asking about specific emotions, states, or trends? → data_query
-3. Are they asking "what is this?" or "how do I use...?" → rag_query
-4. Just being casual? → smalltalk
-5. CONTEXTUAL: Are they saying "and this one", "this one" after asking about pages? → rag_query
+1. Is the user asking for DATA/ANALYTICS?
+   - Asking about specific emotions, states, or trends? → data_query
+   - Visualization requests: "plot this", "chart it", "help me plot", "visualize this" → data_query
+2. Is the user asking for HELP/EXPLANATION or just chatting?
+   - "what is this page?", "how do I use this?", "explain this" → smalltalk
+   - Greetings, thanks, casual conversation → smalltalk
+3. **CRITICAL: Visualization follow-ups** → data_query
+   - If user recently asked a data query AND now says "plot/chart/visualize", it's ALWAYS data_query
+   - Even if they say "help me plot this on a chart" → data_query (they want to visualize previous data)
 
 IMPORTANT: 
-- Questions about "what is this page", "what am I looking at", "explain this" → rag_query
-- Contextual questions like "and this one?", "what about this?" → rag_query
+- Questions about "what is this page", "what am I looking at", "explain this" → smalltalk
 - Questions with specific states/emotions/data requests → data_query
-- Use conversation history to understand context
+- **Visualization requests ("plot", "chart", "visualize") after data queries → data_query**
+- Use conversation history to understand context - if recent query was data_query and user says "plot it", classify as data_query
 - Be precise - don't default everything to data_query
 
 Respond with ONLY valid JSON (no markdown, no extra text):
@@ -177,7 +158,7 @@ Respond with ONLY valid JSON (no markdown, no extra text):
         response = requests.post(
             f"{OLLAMA_BASE_URL}/api/generate",
             json={
-                "model": OLLAMA_MODEL,
+                "model": OLLAMA_MODEL_INTENT,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
@@ -205,8 +186,8 @@ Respond with ONLY valid JSON (no markdown, no extra text):
         reasoning = result.get('reasoning', '')
         
         # Validate intent
-        if intent not in ['data_query', 'rag_query', 'smalltalk']:
-            print(f"[intent_classifier.py:159] Invalid intent from LLM: {intent}, defaulting to data_query")
+        if intent not in ['data_query', 'smalltalk']:
+            print(f"[intent_classifier.py] Invalid intent from LLM: {intent}, defaulting to data_query")
             intent = 'data_query'
             confidence = 0.5
         
@@ -220,8 +201,8 @@ Respond with ONLY valid JSON (no markdown, no extra text):
             response_lower = str(result_text).lower()
             if 'data_query' in response_lower or 'data' in response_lower:
                 return 'data_query', 0.6
-            elif 'rag_query' in response_lower or 'rag' in response_lower or 'help' in response_lower:
-                return 'rag_query', 0.6
+            elif 'help' in response_lower and 'data' not in response_lower and 'plot' not in response_lower:
+                return 'smalltalk', 0.6
             elif 'smalltalk' in response_lower:
                 return 'smalltalk', 0.6
         

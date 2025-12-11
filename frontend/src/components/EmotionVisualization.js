@@ -142,14 +142,16 @@ class EmotionVisualization extends Component {
         {!loading && data.length > 0 && (
           <div style={{ 
             position: 'fixed', 
-            bottom: '20px', 
-            right: '20px', 
+            bottom: window.innerWidth <= 768 ? '80px' : '20px', 
+            left: window.innerWidth <= 768 ? '20px' : 'auto',
+            right: window.innerWidth <= 768 ? 'auto' : '90px', 
             background: 'rgba(0,0,0,0.8)', 
             color: 'white', 
             padding: '10px 15px', 
             borderRadius: '20px',
             fontSize: '12px',
-            border: '1px solid rgba(255,255,255,0.2)'
+            border: '1px solid rgba(255,255,255,0.2)',
+            zIndex: 9997
           }}>
             🔴 LIVE • {data.length} states • Next update in {Math.ceil((30000 - (Date.now() - lastUpdated?.getTime() || 0)) / 1000)}s
           </div>

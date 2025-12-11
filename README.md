@@ -1,4 +1,4 @@
-# TecViz - The Real Time Analytics Platform
+# TecVis 2.0 - The Real Time Analytics Platform
 
 A modern, real-time analytics platform for analyzing emotions in tweets using state-of-the-art transformer models and a scalable Kafka-based architecture.
 
@@ -416,4 +416,4 @@ This project is for educational purposes.
 
 ---
 
-**TecViz - Real-time analytics powered by state-of-the-art AI**
+**TecVis 2.0 - Real-time analytics powered by state-of-the-art AI**

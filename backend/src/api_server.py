@@ -294,7 +294,7 @@ def stream_aggregated_emotions():
     """Server-Sent Events endpoint for real-time aggregated emotion updates"""
     def generate():
         try:
-            conn = psycopg2.connect(**db_params)
+            conn = psycopg2.connect(**DB_PARAMS)
             cursor = conn.cursor()
             
             # Get initial data
@@ -828,7 +828,7 @@ def compare_two_states_emotion(state1, state2, emotion):
 
 # Import chatbot services
 try:
-    from chatbot_api.services.nl2sql import generate_sql
+    from chatbot_api.services.nl2sql import generate_sql, get_last_notice
     from chatbot_api.services.validator import validate_sql, add_limit_if_missing, ensure_group_by
     from chatbot_api.services.db import run_sql, check_explain_cost
     from chatbot_api.services.chart_hints import infer_chart_type
@@ -844,6 +844,8 @@ except ImportError as e:
 
 # Conversation memory
 conversation_history = {}
+# LangChain memory storage (separate from conversation_history dict)
+langchain_memory_store = {}
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -869,7 +871,58 @@ def chat():
         print(f"[api_server.py:chat] Recent questions: {recent_questions}")
     
     try:
-        # Classify intent
+        # 🔍 STEP 1: Context Detection (for follow-ups like "plot this", "visualize previous")
+        print(f"[CHAIN] 🔍 STEP 1: Context Detection for '{question}'")
+        from chatbot_api.services.context_handler import detect_contextual_followup, should_return_previous_results
+        
+        context = None
+        use_langchain = True  # Always use LangChain pipeline
+        
+        # Check LangChain memory first (if available)
+        if use_langchain:
+            try:
+                from chatbot_api.langchain_chain import AnalyticsMemory
+                global langchain_memory_store
+                if session_id in langchain_memory_store:
+                    memory = langchain_memory_store[session_id]
+                    if memory.last_query_context:
+                        q_lower = question.lower().strip()
+                        contextual_keywords = ['plot', 'visualize', 'visualisation', 'chart', 'graph', 'complete', 'full', 'all', 'data', 'it', 'this', 'that', 'help', 'previous']
+                        if any(keyword in q_lower for keyword in contextual_keywords):
+                            context = {
+                                'previous_question': memory.last_query_context.get('question', ''),
+                                'previous_sql': memory.last_query_context.get('sql'),
+                                'previous_rows': memory.last_query_context.get('rows'),
+                                'previous_chart_hint': memory.last_query_context.get('chart_hint'),
+                                'previous_chart_filters': memory.last_query_context.get('chart_filters'),
+                                'follow_up_type': 'visualize' if any(kw in q_lower for kw in ['plot', 'visualize', 'visualisation', 'chart', 'help me plot', 'previous']) else 'expand_data'
+                            }
+                            print(f"[CHAIN] ✓ Context detected using LangChain memory - Previous query: '{context['previous_question'][:50]}...'")
+                        else:
+                            print(f"[CHAIN] ✗ No contextual keywords found in: '{q_lower}'")
+                    else:
+                        print(f"[CHAIN] ✗ No last_query_context in memory")
+                else:
+                    print(f"[CHAIN] ✗ No memory for session {session_id}")
+            except Exception as e:
+                print(f"[CHAIN] ❌ LangChain memory check failed: {e}")
+        
+        # Fallback to conversation_history-based detection
+        if not context:
+            context = detect_contextual_followup(question, history)
+            if context:
+                print(f"[CHAIN] ✓ Context detected using conversation_history - Previous query: '{context.get('previous_question', '')[:50]}...'")
+            else:
+                print(f"[CHAIN] ✗ No context detected in conversation_history")
+        
+        # If context detected and it's a visualization request, force data_query intent
+        force_data_query = False
+        if context and should_return_previous_results(question, context):
+            force_data_query = True
+            print(f"[CHAIN] 🎯 Forcing data_query for visualization follow-up: '{question}'")
+        
+        # 🤖 STEP 2: Intent Classification
+        print(f"[CHAIN] 🤖 STEP 2: Intent Classification")
         intent, context_info = classify_intent_smart(
             question=question,
             has_screenshot=False,
@@ -877,19 +930,32 @@ def chat():
             previous_queries=history
         )
         
-        # Ensure current_page is in context_info
+        # Override intent if we detected a visualization follow-up
+        if force_data_query:
+            original_intent = intent
+            intent = 'data_query'
+            print(f"[CHAIN] 🎯 Intent overridden: {original_intent} → {intent} (visualization follow-up)")
+        
+        print(f"[CHAIN] ✓ Final intent: {intent}")
+        
+        # Ensure current_page and session_id are in context_info
         context_info['current_page'] = current_page
+        context_info['session_id'] = session_id
+        if context:
+            context_info['detected_context'] = context  # Pass context to handler
         
         logger.system_event("CHATBOT_INTENT", f"Question: '{question}' → Intent: {intent}")
         
-        # Route to appropriate handler
+        # 🔀 STEP 3: Route to Handler
+        print(f"[CHAIN] 🔀 STEP 3: Routing to handler: {intent}")
         if intent == 'smalltalk':
-            result = handle_smalltalk(question)
+            print(f"[CHAIN] 💬 Routing to handle_smalltalk")
+            result = handle_smalltalk(question, context_info)
         elif intent == 'data_query':
+            print(f"[CHAIN] 📊 Routing to handle_data_query")
             result = handle_data_query(question, context_info)
-        elif intent == 'rag_query':
-            result = handle_rag_query(question, context_info)
         else:
+            print(f"[CHAIN] ❓ Unknown intent, returning default response")
             result = {
                 "sql": None,
                 "rows": [],
@@ -897,13 +963,22 @@ def chat():
                 "message": "I'm not sure how to help with that. Can you rephrase?"
             }
         
-        # Save to conversation history
-        history.append({
+        print(f"[CHAIN] ✅ Handler completed: {len(result.get('rows', []))} rows, chart_hint: {result.get('chart_hint')}")
+        
+        # Save to conversation history with full query context
+        history_entry = {
             'question': question,
             'intent': intent,
             'context': context_info,
-            'timestamp': time.time()
-        })
+            'timestamp': time.time(),
+            'result': {
+                'sql': result.get('sql'),
+                'rows': result.get('rows'),
+                'chart_hint': result.get('chart_hint'),
+                'message': result.get('message')
+            } if intent == 'data_query' else None
+        }
+        history.append(history_entry)
         conversation_history[session_id] = history[-MAX_CONVERSATION_HISTORY:]
         
         # Add debug info
@@ -916,7 +991,51 @@ def chat():
         logger.error("API_SERVER", f"Chat error: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
-def handle_smalltalk(question):
+@app.route('/chat/smart_suggest', methods=['POST'])
+def smart_chart_suggest():
+    """Generate smart chart suggestions using LLM on demand"""
+    if not CHATBOT_AVAILABLE:
+        return jsonify({"error": "Chatbot services not available"}), 503
+        
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Data is required"}), 400
+        
+    sql = data.get('sql')
+    rows = data.get('rows')
+    question = data.get('question')
+    
+    if not rows:
+        return jsonify({"error": "No data rows provided"}), 400
+        
+    try:
+        from chatbot_api.services.chart_llm import suggest_chart_with_llm
+        print(f"[API_SERVER] 🧠 Generating smart chart for: '{question}'")
+        
+        # Call LLM
+        chart_data = suggest_chart_with_llm(sql, rows, question)
+        
+        if chart_data:
+            print(f"[API_SERVER] ✓ Smart chart generated: {chart_data.get('chart_type')}")
+            return jsonify({
+                "success": True,
+                "chart_hint": chart_data.get('chart_type'),
+                "chart_config": chart_data.get('chart_config'),
+                "chart_reasoning": chart_data.get('reasoning'),
+                "chart_code": chart_data.get('code')
+            })
+        else:
+            print(f"[API_SERVER] ⚠ Smart chart generation returned None")
+            return jsonify({"success": False, "message": "No chart suggestion found"}), 404
+            
+    except Exception as e:
+        logger.error("API_SERVER", f"Smart chart error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+def handle_smalltalk(question, context_info=None):
     """Handle casual conversation"""
     import requests
     from chatbot_api.config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT, OLLAMA_TEMP_SMALLTALK
@@ -926,7 +1045,7 @@ def handle_smalltalk(question):
             f"{OLLAMA_BASE_URL}/api/generate",
             json={
                 "model": OLLAMA_MODEL,
-                "prompt": f"You are TecViz AI, a friendly assistant for an emotion analytics platform. Respond briefly and warmly to:\n{question}",
+                "prompt": f"You are TecVis 2.0 AI, a friendly assistant for an emotion analytics platform. Respond briefly and warmly to:\n{question}",
                 "stream": False,
                 "options": {"temperature": OLLAMA_TEMP_SMALLTALK}
             },
@@ -949,10 +1068,121 @@ def handle_smalltalk(question):
         "message": message
     }
 
-def handle_data_query(question, context_info):
-    """Handle data queries with NL→SQL pipeline"""
-    # Generate SQL
-    sql = generate_sql(question)
+def handle_data_query(question, context_info, use_langchain: bool = True):
+    """
+    Handle data queries with enhanced LangChain pipeline for 90-100% accuracy.
+    
+    Microsoft Fabric-inspired: Auto-visualization when appropriate.
+    """
+    from chatbot_api.services.context_handler import (
+        detect_contextual_followup, 
+        inject_context_into_prompt,
+        should_return_previous_results
+    )
+    
+    # 🔗 Use LangChain pipeline (main processing)
+    if use_langchain:
+        try:
+            print(f"[DATA_QUERY] 🔗 Using LangChain pipeline")
+            from chatbot_api.langchain_chain import AnalyticsMemory, run_analytics_pipeline
+            
+            # Get or create memory for session
+            session_id = context_info.get('session_id', 'default')
+            global langchain_memory_store
+            
+            if session_id not in langchain_memory_store:
+                langchain_memory_store[session_id] = AnalyticsMemory()
+                print(f"[DATA_QUERY] ✓ Created new memory for session: {session_id}")
+            else:
+                print(f"[DATA_QUERY] ✓ Using existing memory for session: {session_id}")
+            
+            memory = langchain_memory_store[session_id]
+            current_page = context_info.get('current_page')
+            
+            # Run LangChain pipeline
+            print(f"[DATA_QUERY] 🚀 Running analytics pipeline...")
+            result = run_analytics_pipeline(question, memory, current_page)
+            
+            # Ensure backward compatibility
+            if 'auto_show_viz' not in result:
+                from chatbot_api.langchain_chain import should_auto_visualize
+                result['auto_show_viz'] = should_auto_visualize(result.get('rows', []), result.get('chart_hint'))
+            
+            print(f"[DATA_QUERY] ✅ Pipeline completed successfully")
+            print(f"[DATA_QUERY] ✓ SQL: {result.get('sql', 'None')[:100]}...")
+            print(f"[DATA_QUERY] ✓ Rows: {len(result.get('rows', []))}")
+            print(f"[DATA_QUERY] ✓ Chart: {result.get('chart_hint')}")
+            print(f"[DATA_QUERY] ✓ Auto-viz: {result.get('auto_show_viz')}")
+            return result
+            
+        except Exception as e:
+            import traceback
+            print(f"[DATA_QUERY] ❌ LangChain pipeline failed: {e}")
+            traceback.print_exc()
+            print(f"[DATA_QUERY] 🔄 Falling back to legacy implementation")
+            # Fall through to legacy implementation
+    
+    # LEGACY: Original implementation (fallback)
+    # Get conversation history for context detection
+    session_id = context_info.get('session_id', 'default')
+    history = conversation_history.get(session_id, [])
+    
+    # Check if this is a contextual follow-up
+    context = detect_contextual_followup(question, history)
+    
+    # If user just wants to visualize previous results, return them directly
+    if context and should_return_previous_results(question, context):
+        print(f"[api_server.py:handle_data_query] Returning previous results for visualization follow-up")
+        return {
+            "sql": context['previous_sql'],
+            "rows": context['previous_rows'],
+            "chart_hint": context['previous_chart_hint'],
+            "message": f"Here's the visualization for your previous query about {context['previous_question']}.",
+            "is_contextual": True
+        }
+    
+    # Handle "complete data" / "full data" requests - expand previous query
+    if context and context.get('follow_up_type') == 'expand_data':
+        from chatbot_api.services.context_handler import expand_previous_query
+        expanded_sql = expand_previous_query(context)
+        if expanded_sql:
+            print(f"[api_server.py:handle_data_query] Expanding previous query: {expanded_sql[:200]}...")
+            # Validate and execute expanded SQL
+            from chatbot_api.services.validator import fix_order_by_alias_references
+            sql = add_limit_if_missing(expanded_sql, max_limit=MAX_SQL_LIMIT)
+            sql = ensure_group_by(sql)
+            sql = fix_order_by_alias_references(sql)  # Fix alias references in ORDER BY
+            is_valid, error = validate_sql(sql)
+            if is_valid:
+                rows, exec_error = run_sql(sql, timeout=SQL_TIMEOUT)
+                if not exec_error:
+                    chart_hint = infer_chart_type(sql, rows, question)
+                    current_page = context_info.get('current_page')
+                    nl_message = generate_nl_response(
+                        f"Complete data for: {context['previous_question']}", 
+                        sql, rows, chart_hint, current_page
+                    )
+                    return {
+                        "sql": sql,
+                        "rows": rows,
+                        "chart_hint": chart_hint,
+                        "message": nl_message,
+                        "is_contextual": True
+                    }
+    
+    # Enhance question with context if detected
+    enhanced_question = question
+    if context:
+        enhanced_question = inject_context_into_prompt(question, context)
+        print(f"[api_server.py:handle_data_query] Enhanced question with context: {enhanced_question[:200]}...")
+    
+    # Generate SQL (with or without context)
+    sql = generate_sql(enhanced_question)
+    provider_notice = None
+    try:
+        provider_notice = get_last_notice()
+    except Exception:
+        provider_notice = None
     if not sql:
         return {
             "sql": None,
@@ -965,6 +1195,10 @@ def handle_data_query(question, context_info):
     sql = add_limit_if_missing(sql, max_limit=MAX_SQL_LIMIT)
     # Auto-fix GROUP BY consistency for Postgres
     sql = ensure_group_by(sql)
+    # Fix ORDER BY alias references (PostgreSQL doesn't allow aliases in ORDER BY)
+    from chatbot_api.services.validator import fix_order_by_alias_references, ensure_order_by_in_select
+    sql = ensure_order_by_in_select(sql)  # Add missing aggregates to SELECT
+    sql = fix_order_by_alias_references(sql)  # Expand aliases to expressions in ORDER BY
     
     # Validate SQL
     is_valid, error = validate_sql(sql)
@@ -986,8 +1220,25 @@ def handle_data_query(question, context_info):
             "message": "The query engine is currently experiencing an issue. We're on it—please retry in a bit."
         }
     
-    # Generate chart hint
-    chart_hint = infer_chart_type(sql, rows)
+    # Generate chart hint (pass question for LLM context if enabled)
+    chart_hint_result = infer_chart_type(sql, rows, question)
+    
+    # Handle both new format (dict) and legacy format (string)
+    chart_hint = None
+    chart_filters = None
+    if isinstance(chart_hint_result, dict):
+        chart_hint = chart_hint_result.get('chart_type')
+        if chart_hint_result.get('suggest_filters'):
+            chart_filters = chart_hint_result.get('filter_types', [])
+    else:
+        chart_hint = chart_hint_result
+    
+    # Microsoft Fabric-inspired: Auto-show visualization when appropriate
+    try:
+        from chatbot_api.langchain_chain import should_auto_visualize
+        auto_show_viz = should_auto_visualize(rows, chart_hint)
+    except:
+        auto_show_viz = False
     
     # Generate natural language response
     current_page = context_info.get('current_page')
@@ -997,225 +1248,14 @@ def handle_data_query(question, context_info):
         "sql": sql,
         "rows": rows,
         "chart_hint": chart_hint,
-        "message": nl_message
+        "chart_filters": chart_filters,  # New: filter suggestions
+        "auto_show_viz": auto_show_viz,  # Microsoft Fabric: auto-show when appropriate
+        "message": nl_message,
+        "notice": provider_notice
     }
 
-def handle_rag_query(question, context_info):
-    """Handle RAG/UI help queries"""
-    current_page = context_info.get('current_page', 'unknown')
-    question_lower = question.lower()
-    
-    # Debug logging
-    print(f"[api_server.py:handle_rag_query] current_page: '{current_page}', question: '{question}'")
-    
-    # Get date range from database
-    try:
-        conn = get_db_connection()
-        if conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT 
-                    MIN(DATE(timestamp)) as min_date,
-                    MAX(DATE(timestamp)) as max_date,
-                    COUNT(*) as total_tweets
-                FROM tweets 
-                WHERE timestamp IS NOT NULL
-            """)
-            result = cursor.fetchone()
-            cursor.close()
-            conn.close()
-            
-            if result and result[0] and result[1]:
-                min_date = result[0].strftime('%B %d, %Y')
-                max_date = result[1].strftime('%B %d, %Y')
-                total_tweets = result[2]
-                
-                if min_date == max_date:
-                    date_range = f"{min_date} ({total_tweets:,} tweets)"
-                else:
-                    date_range = f"{min_date} to {max_date} ({total_tweets:,} tweets)"
-            else:
-                date_range = "recent data"
-        else:
-            date_range = "recent data"
-    except Exception as e:
-        print(f"[api_server.py:handle_rag_query] Error getting date range: {e}")
-        date_range = "recent data"
-    
-    # Page explanations
-    page_explanations = {
-        'visualization': f"""This page showcases multidimensional visualizations for the various emotions across different states for the time frame: {date_range}.
-
-**What you can do here:**
-
-**Filter & Explore:**
-• Use emotion filters (anger, joy, fear, sadness, surprise, anticipation, trust, disgust)
-• Filter by specific states or regions
-• Adjust time ranges to see trends over different periods
-
-**Visualizations Available:**
-• **Dot Plot**: See emotion intensity by state (larger dots = higher intensity)
-• **Horizon Chart**: View emotion trends over time with layered visualization
-• **Time Series**: Track how emotions change over days/weeks/months
-• **State Comparisons**: Compare emotion patterns between different states
-
-**Interactive Features:**
-• Hover over dots to see detailed emotion breakdowns
-• Click states to drill down into specific data
-• Use the legend to toggle emotions on/off
-• Export visualizations for presentations""",
-        
-        'metrics': f"""This is the Analytics page showing comprehensive insights about all the data present in our system.
-
-**Data Overview:**
-
-**System Metrics** covering {date_range}:
-• Total tweet counts and processing statistics
-• Geographic distribution across all US states
-• Emotion analysis performance metrics
-
-**What you'll find:**
-• **Top States by Volume**: Which states generate the most tweets
-• **Engagement Analytics**: Likes, retweets, replies, and views patterns
-• **Hourly Activity**: When people are most active on social media
-• **Context Analysis**: Most common keywords and topics
-• **Sentiment Distribution**: Overall positive/negative/neutral breakdown
-• **System Performance**: Processing speed and accuracy metrics
-
-**Use this data to:**
-• Understand overall platform performance
-• Identify trending topics and peak activity times
-• Compare engagement patterns across different regions""",
-        
-        'history': f"""This is the History page showing all the tweets stored in our database from {date_range}.
-
-**What you can see:**
-
-**Tweet Archive**: Browse through all processed tweets with complete emotion analysis
-• **20 tweets per page** with pagination controls
-• **Filter by state** using the dropdown menu
-• Each tweet shows detailed emotion scores for all 8 emotions
-• Complete metadata: username, timestamp, location, engagement stats
-
-**Features:**
-• **Search & Filter**: Find tweets from specific states or time periods
-• **Emotion Scores**: See how each tweet scored on anger, joy, fear, sadness, etc.
-• **Engagement Data**: View likes, retweets, replies, and views
-• **Geographic Context**: See which state each tweet originated from
-
-**Perfect for:**
-• Exploring past trends and patterns
-• Finding specific tweets or topics
-• Understanding how emotions vary by location and time""",
-        
-        'live': f"""This is the Live Stream page showing tweets as they are generated and processed in real-time.
-
-**What's happening:**
-
-**Real-Time Processing**: Watch tweets flow through our emotion analysis system live
-• Tweets appear instantly as they're captured and analyzed
-• Each tweet gets processed for all 8 emotions (anger, joy, fear, sadness, surprise, anticipation, trust, disgust)
-• Sentiment analysis (positive/negative/neutral) happens in real-time
-• Geographic tagging shows which state each tweet comes from
-
-**Live Features:**
-• **Connection Status**: See if the data stream is active
-• **Real-Time Scores**: Watch emotion analysis happen instantly
-• **Geographic Distribution**: See tweets from different states as they arrive
-• **Engagement Tracking**: Live likes, retweets, and replies data
-
-**Use this to:**
-• Monitor current social media sentiment
-• See breaking trends as they happen
-• Watch how emotions shift in real-time across different states
-• Understand the live pulse of social media activity"""
-    }
-    
-    # Quick, question-aware helpers
-    def horizon_chart_help(current_pg: str) -> str:
-        where_text = "on the Emotion Map page" if current_pg != 'visualization' else "here on the Emotion Map"
-        return (
-            f"How to view Horizon Charts {where_text} (covering {date_range}):\n\n"
-            "1. Open the Emotion Map page.\n"
-            "2. In the chart selector, choose 'Horizon Chart'.\n"
-            "3. Pick an emotion (anger, joy, fear, sadness, surprise, anticipation, trust, disgust).\n"
-            "4. Optionally filter to a state or leave 'All' to view stacked bands.\n"
-            "5. Adjust the date range to widen or narrow the time window.\n"
-            "6. Hover to see daily values; darker bands indicate higher intensity.\n"
-            "7. If the chart looks flat, expand the date range or switch the emotion.\n\n"
-            "Notes:\n"
-            "- Horizon charts need multiple days of data per state (we distribute timestamps across ~180 days).\n"
-            "- For sparse states, try 'All states' or switch to 'Time Series' for a single-state line."
-        )
-
-    def interaction_help(current_pg: str) -> str:
-        page_name = {
-            'visualization': 'Emotion Map',
-            'metrics': 'Analytics',
-            'history': 'History',
-            'live': 'Live Stream'
-        }.get(current_pg, 'Emotion Map')
-
-        return (
-            f"Interactive features on the {page_name} page (covering {date_range}):\n\n"
-            "• Click to Compare (Radar): In Time Series compare mode, click two state lines to open a radar chart of all 8 emotions.\n"
-            "• Hover Tooltips: Hover any dot/line/band to see the daily average value and the state/emotion.\n"
-            "• Filters: Use state and emotion filters to narrow results; multiple selections supported.\n"
-            "• Legend Toggles: Click legend items to show/hide specific emotions for clarity.\n"
-            "• Reset: Use the 'Reset' control to clear filters and restore defaults.\n"
-        )
-
-    def compare_help() -> str:
-        return (
-            "How to compare two states (line → radar workflow):\n\n"
-            "1) Open Time Series → Compare mode.\n"
-            "2) Select the emotion to compare (e.g., anger).\n"
-            "3) Choose two states from the state picker (or click lines).\n"
-            "4) The chart shows both lines across time.\n"
-            "5) Click the lines to open a radar chart comparing all 8 emotions for those states.\n"
-            "6) Hover the radar to read exact averages per emotion.\n"
-        )
-
-    # Get explanation
-    print(f"[api_server.py:handle_rag_query] Looking for page '{current_page}' in explanations")
-    print(f"[api_server.py:handle_rag_query] Available pages: {list(page_explanations.keys())}")
-    
-    explanation = page_explanations.get(current_page, 
-        f"This is the TecViz emotion analytics platform analyzing social media data from {date_range}.")
-    
-    # Handle contextual questions
-    contextual_phrases = ['and this one', 'this one', 'and this', 'what about this', 'and here']
-    is_contextual = any(phrase in question_lower for phrase in contextual_phrases)
-    
-    if 'horizon' in question_lower or 'horizon chart' in question_lower:
-        message = horizon_chart_help(current_page)
-    elif any(k in question_lower for k in ['radar', 'compare two', 'compare states', 'comparison', 'two states']):
-        message = compare_help()
-    elif any(k in question_lower for k in ['hover', 'tooltip', 'filter', 'legend', 'zoom', 'reset', 'export', 'interactive']):
-        message = interaction_help(current_page)
-    elif is_contextual:
-        page_names = {
-            'live': 'Live Stream',
-            'history': 'History', 
-            'metrics': 'Analytics',
-            'visualization': 'Emotion Map'
-        }
-        page_name = page_names.get(current_page, 'this page')
-        message = f"Now you're looking at the **{page_name}** page.\n\n{explanation}"
-    elif any(word in question_lower for word in ['what', 'explain', 'about', 'show', 'page']):
-        message = explanation
-    elif 'how' in question_lower:
-        message = f"{explanation}\n\n**Need help with specific features?** Ask me about filtering, visualizations, or data analysis!"
-    else:
-        message = f"{explanation}\n\nWhat specific aspect would you like me to explain further?"
-    
-    return {
-        "sql": None,
-        "rows": [],
-        "chart_hint": None,
-        "message": message
-    }
+# RAG handling removed - UI help questions now handled in handle_smalltalk()
 
 if __name__ == "__main__":
     logger.system_event("API_SERVER_STARTING", "Port 9000 (Flask)")
-    app.run(host='0.0.0.0', port=9000, debug=True, threaded=True)
+    app.run(host="0.0.0.0", port=9000, debug=True, threaded=True)

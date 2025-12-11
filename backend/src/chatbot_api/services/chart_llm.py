@@ -94,18 +94,20 @@ WHEN NOT TO RECOMMEND CHARTS (BE SPECIFIC):
 - If question asks for raw data/list: Say "Visualization not recommended - user requested raw data/list format which is better displayed as a table."
 - If data is too sparse/incomplete: Say "Visualization not recommended - data is too sparse with many null values. Table view is more appropriate."
 
-RESPONSE FORMAT (JSON ONLY):
-{{
-  "chart_type": "area_chart" OR "none",
-  "reasoning": "Since the user asked for a trend over time, an AreaChart is best to show the magnitude of change..." OR "Cannot create visualization - only 1 data point. Need at least 2 points for meaningful visualization.",
-  "chart_config": {{
-    "title": "Anger Trend over Time",
-    "xAxis": "date",
-    "yAxis": "anger_avg",
-    "colors": ["#4ea1ff"]
-  }} OR null,
-  "code": "..." OR null // The complete React component code wrapping <ResponsiveContainer>
-}}
+RESPONSE FORMAT - CRITICAL:
+You MUST respond with ONLY valid JSON. NO markdown, NO code blocks, NO backticks, NO explanation outside JSON.
+
+CORRECT FORMAT (copy this structure EXACTLY):
+{{"chart_type": "area_chart", "reasoning": "User asked for trend so area chart is best"}}
+
+WRONG (do NOT do this):
+```json
+{{chart_type: area_chart}}
+```
+
+Valid chart_type values: line_chart, multi_line_chart, area_chart, bar_chart, grouped_bar_chart, stacked_bar_chart, horizontal_bar_chart, radar_chart, pie_chart, heatmap, none
+
+Respond with ONLY the JSON object, nothing else:
 
 CODE REQUIREMENTS:
 - Return ONLY the JSX inside <ResponsiveContainer>...</ResponsiveContainer>.

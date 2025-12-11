@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   Radar, Cell, ComposedChart, Area, AreaChart
 } from 'recharts';
+import { Brain, User, TrendingUp, X, Trash2 } from 'lucide-react';
 import './FloatingChatbot.css';
 
 // Simple markdown parser for bot responses
@@ -55,7 +56,10 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
   const [capturing, setCapturing] = useState(false);
   const [sqlModal, setSqlModal] = useState(null); // Track which SQL modal is open
   const [copied, setCopied] = useState(false);    // Copy-to-clipboard feedback
-  const [showChartPreview, setShowChartPreview] = useState(false); // Render chart on demand only
+  const [showChartPreview, setShowChartPreview] = useState(true); // Render chart on demand - OPEN BY DEFAULT
+  const [showDataTable, setShowDataTable] = useState(true); // Collapsible data table - OPEN BY DEFAULT
+  const [showSqlQuery, setShowSqlQuery] = useState(true); // Collapsible SQL query - OPEN BY DEFAULT
+  const [showVisualization, setShowVisualization] = useState(true); // Collapsible visualization - OPEN BY DEFAULT
 
   const captureScreenshot = async () => {
     setCapturing(true);
@@ -124,7 +128,11 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
         sql: data.sql,
         rows: data.rows || [],
         chartHint: data.chart_hint,
-        message: data.message
+        chartConfig: data.chart_config, // New: Rich config
+        chartReasoning: data.chart_reasoning, // New: Reasoning
+        chartCode: data.chart_code, // New: Generated Code
+        message: data.message,
+        autoShowViz: data.auto_show_viz || false
       };
 
       const notice = data.notice;
@@ -136,6 +144,20 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
         msgs.push(botMessage);
         return msgs;
       });
+      
+      // Microsoft Fabric-inspired: Auto-open modal and show visualization if appropriate
+      if (botMessage.autoShowViz && (botMessage.sql || (botMessage.rows && botMessage.rows.length > 0))) {
+        setTimeout(() => {
+          const messageIndex = history.length + (notice ? 1 : 0);
+          openSqlModal(botMessage, messageIndex);
+          // Auto-expand visualization section (Microsoft Fabric style)
+          setShowVisualization(true);
+          setShowChartPreview(true);
+          // Auto-expand SQL query too for transparency
+          setShowSqlQuery(true);
+        }, 400); // Small delay for smooth UX animation
+      }
+      
       setQuestion('');
     } catch (err) {
       const message = err.message || 'Something went wrong. Please try again.';
@@ -165,592 +187,870 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
 
   const closeSqlModal = () => {
     setSqlModal(null);
+    setShowDataTable(false); // Reset table state when modal closes
+    setShowChartPreview(false); // Reset chart state when modal closes
+    setShowSqlQuery(false); // Reset SQL query state when modal closes
+    setShowVisualization(false); // Reset visualization state when modal closes (also resets chart preview)
   };
 
   // Smart multi-dimensional chart renderer using Recharts
-  const ChartRenderer = ({ rows, hint }) => {
+  const ChartRenderer = ({ rows, hint, config, code }) => {
+    // Calculate chart data first
     const chartData = useMemo(() => {
-      if (!rows || rows.length === 0) return null;
+      console.log('[ChartRenderer] Starting chartData calculation');
+      
+      if (!rows || rows.length === 0) {
+        return null;
+      }
 
       const cols = Object.keys(rows[0] || {});
       const numericCols = cols.filter(c => typeof rows[0][c] === 'number');
       const categoricalCols = cols.filter(c => typeof rows[0][c] !== 'number');
       const dateKey = cols.find(c => /date|timestamp/i.test(c));
       const stateKey = cols.find(c => /state_name|state_code/i.test(c));
+      
+      // Improved emotion detection
       const emotionCols = ['anger', 'fear', 'sadness', 'joy', 'surprise', 'anticipation', 'trust', 'disgust']
         .filter(e => cols.some(c => c.toLowerCase().includes(e)));
+      
+      // Generic numeric columns handling
+      const hasGenericNumericCols = numericCols.some(c => /^avg(_\d+)?$/i.test(c));
+      const hasMultipleNumericWithState = numericCols.length >= 3 && stateKey && hasGenericNumericCols;
+      
+      let emotionToColumnMap = {};
+      if (hasMultipleNumericWithState && emotionCols.length === 0) {
+        const emotionNames = ['anger', 'fear', 'sadness', 'joy', 'surprise', 'anticipation', 'trust', 'disgust'];
+        emotionCols.push(...emotionNames.slice(0, numericCols.length));
+        numericCols.forEach((col, idx) => {
+          if (idx < emotionNames.length) {
+            emotionToColumnMap[emotionNames[idx]] = col;
+          }
+        });
+      } else {
+        emotionCols.forEach(emotion => {
+          const col = numericCols.find(c => c.toLowerCase().includes(emotion));
+          if (col) emotionToColumnMap[emotion] = col;
+        });
+      }
 
-      // Determine chart type from hint or data shape
+      // Determine chart type
       const chartType = hint || (() => {
-        if (dateKey && numericCols.length === 1) return 'line_chart';
-        if (dateKey && numericCols.length > 1) return 'multi_line_chart';
-        // Multi-dimensional emotion data: use heatmap for many states/emotions, radar for fewer
-        if (emotionCols.length >= 3 && stateKey) {
-          if (rows.length >= 5 && emotionCols.length >= 5) return 'heatmap';
-          if (rows.length <= 4 && emotionCols.length <= 6) return 'radar_chart';
-          return 'heatmap'; // Default to heatmap for clarity
-        }
-        // General multi-dimensional data
-        if (numericCols.length >= 3 && stateKey) {
-          return rows.length <= 15 && numericCols.length <= 4 ? 'grouped_bar_chart' : 'heatmap';
-        }
-        if (stateKey && numericCols.length === 1) {
-          return rows.length <= 10 ? 'horizontal_bar_chart' : 'bar_chart';
-        }
-        if (stateKey && numericCols.length === 2) return 'grouped_bar_chart';
+        // Fallback logic
+        if (stateKey && numericCols.length >= 2) return 'grouped_bar_chart';
+        if (dateKey && numericCols.length >= 1) return 'line_chart';
         return 'bar_chart';
       })();
 
-      return { chartType, rows, cols, numericCols, categoricalCols, dateKey, stateKey, emotionCols };
+      return { chartType, rows, cols, numericCols, categoricalCols, dateKey, stateKey, emotionCols, emotionToColumnMap };
     }, [rows, hint]);
+
+    // Extract data for hooks
+    const emotionCols = chartData?.emotionCols || [];
+    const stateKey = chartData?.stateKey || null;
+    const dataRows = chartData?.rows || [];
+    
+    // Filter state management
+    const [selectedEmotions, setSelectedEmotions] = useState(() => {
+      if (emotionCols.length > 0) return emotionCols;
+      return [];
+    });
+    const [selectedStates, setSelectedStates] = useState(() => {
+      if (stateKey && dataRows.length > 0) {
+        return [...new Set(dataRows.map(r => r[stateKey]).filter(Boolean))];
+      }
+      return [];
+    });
+    
+    // AI Enhancement State
+    const [enhancing, setEnhancing] = useState(false);
+    const [smartHint, setSmartHint] = useState(null);
+    const [smartConfig, setSmartConfig] = useState(null);
+    const [smartReasoning, setSmartReasoning] = useState(null);
+    
+    // Apply filters
+    const filteredRows = useMemo(() => {
+      if (!dataRows || dataRows.length === 0) return [];
+      let filtered = dataRows;
+      if (selectedStates.length > 0 && stateKey) {
+        filtered = filtered.filter(row => selectedStates.includes(row[stateKey]));
+      }
+      return filtered;
+    }, [dataRows, selectedStates, stateKey]);
 
     if (!chartData || !chartData.rows) return null;
 
-    const { chartType, rows: dataRows, numericCols, dateKey, stateKey, emotionCols } = chartData;
+    // Use smart hint if available, otherwise original hint or fallback
+    const { chartType: baseChartType, numericCols, dateKey, emotionToColumnMap, cols } = chartData;
+    const effectiveChartType = smartHint || baseChartType;
+    
+    // Use config if available to override defaults (e.g. colors)
+    const activeConfig = smartConfig || config;
+    const colors = activeConfig?.colors || ['#4ea1ff', '#ff6b6b', '#51cf66', '#ffd43b', '#845ef7', '#ff8787', '#74c0fc', '#ffa94d'];
 
-    // Radar Chart - Multi-dimensional emotion data per state
-    // For radar charts, each row (state) has all emotions, and we show multiple states as overlays
-    if (chartType === 'radar_chart' && emotionCols.length >= 3 && stateKey) {
-      // Map emotion column names to actual column names
-      const emotionMap = {};
-      emotionCols.forEach(emotion => {
-        const col = numericCols.find(c => c.toLowerCase().includes(emotion));
-        if (col) emotionMap[emotion] = col;
-      });
-
-      // Prepare data: each state becomes a radar series
-      const radarData = dataRows.slice(0, 5).map(row => {
-        const data = { state: (row[stateKey] || 'Unknown').substring(0, 12) };
-        Object.keys(emotionMap).forEach(emotion => {
-          const col = emotionMap[emotion];
-          data[emotion] = Number(row[col]) || 0;
-        });
-        return data;
-      });
-
-      const colors = ['#4ea1ff', '#ff6b6b', '#51cf66', '#ffd43b', '#845ef7'];
+    // Determine fallback chain based on data structure
+    const getFallbackChartTypes = (primaryType) => {
+      // Smart fallback: If we have sentiment/count columns, prioritize stacked_bar_chart
+      const hasCompositionColumns = cols.some(c => /sentiment_|_count|_percentage|breakdown/i.test(c));
       
+      const fallbacks = {
+        'radar_chart': hasCompositionColumns 
+          ? ['stacked_bar_chart', 'grouped_bar_chart', 'heatmap', 'bar_chart']
+          : ['heatmap', 'grouped_bar_chart', 'stacked_bar_chart', 'bar_chart'],
+        'heatmap': hasCompositionColumns
+          ? ['stacked_bar_chart', 'grouped_bar_chart', 'bar_chart']
+          : ['grouped_bar_chart', 'stacked_bar_chart', 'bar_chart'],
+        'grouped_bar_chart': hasCompositionColumns
+          ? ['stacked_bar_chart', 'bar_chart', 'horizontal_bar_chart']
+          : ['stacked_bar_chart', 'bar_chart', 'horizontal_bar_chart'],
+        'stacked_bar_chart': ['grouped_bar_chart', 'bar_chart'],
+        'bar_chart': ['horizontal_bar_chart', 'grouped_bar_chart'],
+        'horizontal_bar_chart': ['bar_chart'],
+        'multi_line_chart': ['line_chart', 'bar_chart'],
+        'line_chart': ['area_chart', 'bar_chart']
+      };
+      return fallbacks[primaryType] || (hasCompositionColumns ? ['stacked_bar_chart', 'bar_chart'] : ['bar_chart', 'horizontal_bar_chart']);
+    };
+    
+    // Try chart types in order: primary -> fallbacks
+    const chartTypesToTry = [effectiveChartType, ...getFallbackChartTypes(effectiveChartType)];
+    
+    // Function to trigger AI enhancement
+    const enhanceWithAI = async () => {
+      if (enhancing) return;
+      setEnhancing(true);
+      try {
+        const response = await fetch('http://localhost:9000/chat/smart_suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sql: history[history.length-1]?.sql, // Last SQL
+            rows: rows,
+            question: history.length > 1 ? history[history.length-2].text : '' // Last question
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.chart_hint) {
+            setSmartHint(data.chart_hint);
+            setSmartConfig(data.chart_config);
+            setSmartReasoning(data.chart_reasoning);
+          }
+        }
+      } catch (e) {
+        console.error("AI enhancement failed", e);
+      } finally {
+        setEnhancing(false);
+      }
+    };
+    
+    // Filter UI component
+    const FilterControls = () => {
       return (
-        <div style={{ width: '100%', height: '400px', padding: '10px 0' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <RadarChart data={radarData}>
-              <PolarGrid />
-              <PolarAngleAxis 
-                dataKey="state" 
-                tick={{ fill: '#bbb', fontSize: 11 }}
-              />
-              <PolarRadiusAxis 
-                angle={90} 
-                domain={[0, 1]} 
-                tick={{ fill: '#bbb', fontSize: 10 }}
-              />
-              {radarData.map((item, idx) => (
-                <Radar
-                  key={item.state}
-                  name={item.state}
-                  dataKey={item.state}
-                  stroke={colors[idx % colors.length]}
-                  fill={colors[idx % colors.length]}
-                  fillOpacity={0.3}
-                  dot={false}
-                />
-              ))}
-              <Tooltip />
-              <Legend />
-            </RadarChart>
-          </ResponsiveContainer>
+        <div style={{ 
+          marginBottom: '16px', 
+          padding: '12px', 
+          background: '#1a1a1a', 
+          borderRadius: '6px',
+          border: '1px solid #333'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#fff' }}>
+              Filters & Controls
+            </div>
+            
+            <button 
+              onClick={enhanceWithAI}
+              disabled={enhancing || smartHint}
+              style={{
+                background: smartHint ? '#2a2a2a' : 'linear-gradient(45deg, #4ea1ff, #845ef7)',
+                border: 'none',
+                borderRadius: '4px',
+                color: smartHint ? '#888' : '#fff',
+                padding: '4px 8px',
+                fontSize: '11px',
+                cursor: smartHint ? 'default' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: '500'
+              }}
+            >
+              {enhancing ? (
+                <>
+                  <div className="spinner-small" style={{width: 10, height: 10, border: '2px solid rgba(255,255,255,0.3)', borderTop: '2px solid #fff', borderRadius: '50%', animation: 'spin 1s linear infinite'}}></div>
+                  Analyzing...
+                </>
+              ) : smartHint ? (
+                <>✨ Reinforced by AI</>
+              ) : (
+                <>✨ Enhance with AI</>
+              )}
+            </button>
+          </div>
+          
+          {smartReasoning && (
+             <div style={{ fontSize: '11px', color: '#4ea1ff', background: 'rgba(78, 161, 255, 0.1)', padding: '6px', borderRadius: '4px', marginBottom: '8px' }}>
+               <strong>AI Reasoning:</strong> {smartReasoning}
+             </div>
+          )}
+
+          {emotionCols.length > 0 && (
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '6px' }}>Emotions:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {emotionCols.map(emotion => {
+                  const isSelected = selectedEmotions.includes(emotion);
+                  return (
+                    <button
+                      key={emotion}
+                      onClick={() => {
+                        setSelectedEmotions(prev => 
+                          isSelected ? prev.filter(e => e !== emotion) : [...prev, emotion]
+                        );
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '10px',
+                        borderRadius: '4px',
+                        border: '1px solid #444',
+                        background: isSelected ? '#4ea1ff' : '#2a2a2a',
+                        color: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {emotion}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
+          {stateKey && (
+            <div>
+              <div style={{ fontSize: '11px', color: '#aaa', marginBottom: '6px' }}>States:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', maxHeight: '100px', overflowY: 'auto' }}>
+                {[...new Set(dataRows.map(r => r[stateKey]).filter(Boolean))].map(state => {
+                  const isSelected = selectedStates.includes(state);
+                  return (
+                    <button
+                      key={state}
+                      onClick={() => {
+                        setSelectedStates(prev => 
+                          isSelected ? prev.filter(s => s !== state) : [...prev, state]
+                        );
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '10px',
+                        borderRadius: '4px',
+                        border: '1px solid #444',
+                        background: isSelected ? '#4ea1ff' : '#2a2a2a',
+                        color: '#fff',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {state}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       );
-    }
+    };
 
-    // Heatmap - States x Emotions (for many states and emotions)
-    if (chartType === 'heatmap' && stateKey && emotionCols.length >= 5) {
-      const heatmapData = dataRows.slice(0, 10).map(row => {
-        const state = row[stateKey] || 'Unknown';
-        const data = { state };
-        emotionCols.forEach(emotion => {
-          const col = numericCols.find(c => c.toLowerCase().includes(emotion));
-          if (col) data[emotion] = Number(row[col]) || 0;
+    // Try each chart type in order until one works
+    for (const tryChartType of chartTypesToTry) {
+      // Radar Chart
+      if (tryChartType === 'radar_chart' && emotionCols.length >= 3 && stateKey) {
+        const emotionsToShow = selectedEmotions.length > 0 ? selectedEmotions : emotionCols;
+        const statesToShow = selectedStates.length > 0 ? selectedStates : [...new Set(filteredRows.map(r => r[stateKey]).filter(Boolean))];
+        
+        const radarData = filteredRows
+          .filter(row => statesToShow.includes(row[stateKey]))
+          .slice(0, 5)
+          .map(row => {
+            const data = {};
+            emotionsToShow.forEach(emotion => {
+              const col = emotionToColumnMap[emotion] || emotion;
+              data[emotion] = Number(row[col]) || 0;
+            });
+            return data;
+          });
+        
+        const stateNames = filteredRows
+          .filter(row => statesToShow.includes(row[stateKey]))
+          .slice(0, 5)
+          .map(row => (row[stateKey] || 'Unknown').substring(0, 12));
+        
+        const radarChartData = emotionsToShow.map(emotion => {
+          const emotionData = { emotion: emotion.charAt(0).toUpperCase() + emotion.slice(1) };
+          radarData.forEach((stateData, idx) => {
+            const stateKeyForData = stateNames[idx]?.replace(/\s+/g, '_') || `state_${idx}`;
+            emotionData[stateKeyForData] = stateData[emotion] || 0;
+          });
+          return emotionData;
         });
-        return data;
-      });
-
-      return (
-        <div style={{ width: '100%', height: '400px', padding: '10px 0' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={heatmapData} layout="vertical" margin={{ top: 20, right: 30, left: 80, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
-              <XAxis type="number" domain={[0, 1]} tick={{ fill: '#bbb', fontSize: 11 }} />
-              <YAxis 
-                dataKey="state" 
-                type="category" 
-                width={70}
-                tick={{ fill: '#bbb', fontSize: 10 }}
-              />
-              <Tooltip />
-              <Legend />
-              {emotionCols.slice(0, 8).map((emotion, idx) => {
-                const colors = ['#4ea1ff', '#ff6b6b', '#51cf66', '#ffd43b', '#845ef7', '#ff8787', '#74c0fc', '#ffa94d'];
-                return (
-                  <Bar 
-                    key={emotion} 
-                    dataKey={emotion} 
-                    stackId="a" 
-                    fill={colors[idx % colors.length]}
-                    opacity={0.8}
-                  />
-                );
-              })}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    }
-
-    // Grouped Bar Chart - States vs 2-4 metrics
-    if (chartType === 'grouped_bar_chart' && stateKey && numericCols.length >= 2) {
-      const groupedData = dataRows.slice(0, 10).map(row => {
-        const data = { state: (row[stateKey] || 'Unknown').substring(0, 10) };
-        numericCols.slice(0, 4).forEach(col => {
-          data[col] = Number(row[col]) || 0;
-        });
-        return data;
-      });
-
-      const colors = ['#4ea1ff', '#ff6b6b', '#51cf66', '#ffd43b'];
+        
+        return (
+          <div>
+            <FilterControls />
+            <div style={{ width: '100%', height: '400px', padding: '10px 0' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart data={radarChartData}>
+                <PolarGrid />
+                <PolarAngleAxis dataKey="emotion" tick={{ fill: '#bbb', fontSize: 11 }} />
+                <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fill: '#bbb', fontSize: 10 }} />
+                {stateNames.map((stateName, idx) => {
+                  const stateKeyForData = stateName.replace(/\s+/g, '_') || `state_${idx}`;
+                  return (
+                    <Radar
+                      key={stateName || idx}
+                      name={stateName || `State ${idx + 1}`}
+                      dataKey={stateKeyForData}
+                      stroke={colors[idx % colors.length]}
+                      fill={colors[idx % colors.length]}
+                      fillOpacity={0.3}
+                      dot={{ r: 3 }}
+                    />
+                  );
+                })}
+                <Tooltip />
+                <Legend />
+              </RadarChart>
+            </ResponsiveContainer>
+            </div>
+          </div>
+        );
+      }
       
-      return (
-        <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={groupedData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
-              <XAxis 
-                dataKey="state" 
-                angle={-45} 
-                textAnchor="end" 
-                height={80}
-                tick={{ fill: '#bbb', fontSize: 10 }}
-              />
-              <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
-              <Tooltip />
-              <Legend />
-              {numericCols.slice(0, 4).map((col, idx) => (
-                <Bar 
-                  key={col} 
-                  dataKey={col} 
-                  fill={colors[idx % colors.length]}
-                  opacity={0.8}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      );
+      // Heatmap
+      if (tryChartType === 'heatmap' && stateKey && emotionCols.length >= 3) {
+        const heatmapData = dataRows.slice(0, 10).map(row => {
+          const state = row[stateKey] || 'Unknown';
+          const data = { state };
+          Object.keys(emotionToColumnMap).forEach(emotion => {
+            const col = emotionToColumnMap[emotion];
+            data[emotion] = Number(row[col]) || 0;
+          });
+          return data;
+        });
+
+        return (
+          <div style={{ width: '100%', height: '400px', padding: '10px 0' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={heatmapData} layout="vertical" margin={{ top: 20, right: 30, left: 80, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                <XAxis type="number" domain={[0, 1]} tick={{ fill: '#bbb', fontSize: 11 }} />
+                <YAxis dataKey="state" type="category" width={70} tick={{ fill: '#bbb', fontSize: 10 }} />
+                <Tooltip />
+                <Legend />
+                {emotionCols.slice(0, 8).map((emotion, idx) => (
+                  <Bar key={emotion} dataKey={emotion} stackId="a" fill={colors[idx % colors.length]} opacity={0.8} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
+
+      // Stacked Bar Chart
+      if (tryChartType === 'stacked_bar_chart' && stateKey && numericCols.length >= 2) {
+        const stackedData = dataRows.slice(0, 15).map(row => {
+          const data = { state: (row[stateKey] || 'Unknown').substring(0, 12) };
+          numericCols.slice(0, 6).forEach(col => {
+            data[col] = Number(row[col]) || 0;
+          });
+          return data;
+        });
+
+        return (
+          <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stackedData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                <XAxis dataKey="state" angle={-45} textAnchor="end" height={80} tick={{ fill: '#bbb', fontSize: 10 }} />
+                <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
+                <Tooltip />
+                <Legend />
+                {numericCols.slice(0, 6).map((col, idx) => (
+                  <Bar key={col} dataKey={col} stackId="a" fill={colors[idx % colors.length]} opacity={0.8} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
+
+      // Grouped Bar Chart
+      if (tryChartType === 'grouped_bar_chart' && stateKey && numericCols.length >= 2) {
+        const groupedData = dataRows.slice(0, 10).map(row => {
+          const data = { state: (row[stateKey] || 'Unknown').substring(0, 10) };
+          numericCols.slice(0, 4).forEach(col => {
+            data[col] = Number(row[col]) || 0;
+          });
+          return data;
+        });
+
+        return (
+          <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={groupedData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                <XAxis dataKey="state" angle={-45} textAnchor="end" height={80} tick={{ fill: '#bbb', fontSize: 10 }} />
+                <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
+                <Tooltip />
+                <Legend />
+                {numericCols.slice(0, 4).map((col, idx) => (
+                  <Bar key={col} dataKey={col} fill={colors[idx % colors.length]} opacity={0.8} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
+
+      // Multi-Line Chart
+      if (tryChartType === 'multi_line_chart' && dateKey && numericCols.length >= 1) {
+        if (numericCols.length > 1 && !stateKey) {
+          const sorted = [...dataRows].sort((a, b) => new Date(a[dateKey]) - new Date(b[dateKey]));
+          const metricsToShow = numericCols.slice(0, 6);
+
+          return (
+            <div style={{ width: '100%', height: '400px', padding: '10px 0' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sorted} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                  <XAxis dataKey={dateKey} tick={{ fill: '#bbb', fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} />
+                  <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
+                  <Tooltip labelFormatter={(v) => new Date(v).toLocaleDateString()} formatter={(v) => Number(v).toFixed(3)} />
+                  <Legend />
+                  {metricsToShow.map((metric, idx) => (
+                    <Line key={metric} type="monotone" dataKey={metric} stroke={colors[idx % colors.length]} strokeWidth={2} dot={{ r: 3 }} name={metric} />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          );
+        }
+
+        if (stateKey && numericCols.length >= 1) {
+          const dataByDate = {};
+          dataRows.forEach(row => {
+            const date = row[dateKey];
+            const state = row[stateKey] || 'Unknown';
+            const metric = numericCols[0];
+            if (!dataByDate[date]) {
+              dataByDate[date] = { [dateKey]: date };
+            }
+            dataByDate[date][state] = Number(row[metric]) || 0;
+          });
+
+          const sortedData = Object.values(dataByDate).sort((a, b) => new Date(a[dateKey]) - new Date(b[dateKey]));
+          const uniqueStates = [...new Set(dataRows.map(r => r[stateKey]).filter(Boolean))].slice(0, 10);
+
+          return (
+            <div style={{ width: '100%', height: '400px', padding: '10px 0' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sortedData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                  <XAxis dataKey={dateKey} tick={{ fill: '#bbb', fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} />
+                  <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
+                  <Tooltip labelFormatter={(v) => new Date(v).toLocaleDateString()} formatter={(v) => Number(v).toFixed(3)} />
+                  <Legend />
+                  {uniqueStates.map((state, idx) => (
+                    <Line key={state} type="monotone" dataKey={state} stroke={colors[idx % colors.length]} strokeWidth={2} dot={{ r: 3 }} name={state} />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          );
+        }
+      }
+
+      // Line Chart
+      if (tryChartType === 'line_chart' && dateKey && numericCols.length >= 1) {
+        const sorted = [...dataRows].sort((a, b) => new Date(a[dateKey]) - new Date(b[dateKey]));
+        const metric = numericCols[0];
+
+        return (
+          <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={sorted} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#4ea1ff" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#4ea1ff" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                <XAxis dataKey={dateKey} tick={{ fill: '#bbb', fontSize: 10 }} tickFormatter={(v) => new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} />
+                <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
+                <Tooltip labelFormatter={(v) => new Date(v).toLocaleDateString()} formatter={(v) => Number(v).toFixed(3)} />
+                <Area type="monotone" dataKey={metric} stroke="#4ea1ff" fillOpacity={1} fill="url(#colorArea)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
+
+      // Horizontal Bar Chart
+      if (tryChartType === 'horizontal_bar_chart' && numericCols.length >= 1) {
+        const metric = numericCols[0];
+        const categoryKey = stateKey || 'name';
+        const sorted = [...dataRows].sort((a, b) => b[metric] - a[metric]).slice(0, 10);
+        
+        return (
+          <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={sorted} layout="vertical" margin={{ top: 20, right: 30, left: 80, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                <XAxis type="number" tick={{ fill: '#bbb', fontSize: 11 }} />
+                <YAxis dataKey={categoryKey} type="category" width={70} tick={{ fill: '#bbb', fontSize: 10 }} />
+                <Tooltip />
+                <Bar dataKey={metric} fill="#4ea1ff" opacity={0.8} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
+
+      // Bar Chart (Default)
+      if (tryChartType === 'bar_chart' && numericCols.length >= 1) {
+        const metric = numericCols[0];
+        const categoryKey = stateKey || dateKey || cols.find(c => typeof rows[0][c] === 'string') || 'name';
+        
+        return (
+          <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dataRows.slice(0, 20)} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
+                <XAxis dataKey={categoryKey} angle={-45} textAnchor="end" height={80} tick={{ fill: '#bbb', fontSize: 10 }} interval={0} />
+                <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey={metric} fill="#4ea1ff" opacity={0.8} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
     }
-
-    // Line Chart - Time series
-    if (chartType === 'line_chart' && dateKey && numericCols.length >= 1) {
-      const sorted = [...dataRows].sort((a, b) => {
-        const d1 = new Date(a[dateKey]);
-        const d2 = new Date(b[dateKey]);
-        return d1 - d2;
-      });
-      const metric = numericCols[0];
-
-      return (
-        <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={sorted} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#4ea1ff" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#4ea1ff" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
-              <XAxis 
-                dataKey={dateKey} 
-                tick={{ fill: '#bbb', fontSize: 10 }}
-                tickFormatter={(v) => new Date(v).toLocaleDateString()}
-              />
-              <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
-              <Tooltip 
-                labelFormatter={(v) => new Date(v).toLocaleDateString()}
-                formatter={(v) => Number(v).toFixed(3)}
-              />
-              <Area 
-                type="monotone" 
-                dataKey={metric} 
-                stroke="#4ea1ff" 
-                fillOpacity={1} 
-                fill="url(#colorArea)"
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    }
-
-    // Horizontal Bar Chart - Top N rankings
-    if (chartType === 'horizontal_bar_chart' && stateKey && numericCols.length === 1) {
-      const sorted = [...dataRows].sort((a, b) => (b[numericCols[0]] || 0) - (a[numericCols[0]] || 0));
-      const barData = sorted.slice(0, 10).map(row => ({
-        state: (row[stateKey] || 'Unknown').substring(0, 15),
-        value: Number(row[numericCols[0]]) || 0
-      }));
-
-      return (
-        <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={barData} layout="vertical" margin={{ top: 5, right: 30, left: 80, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
-              <XAxis type="number" tick={{ fill: '#bbb', fontSize: 11 }} />
-              <YAxis 
-                dataKey="state" 
-                type="category" 
-                width={70}
-                tick={{ fill: '#bbb', fontSize: 10 }}
-              />
-              <Tooltip formatter={(v) => Number(v).toFixed(3)} />
-              <Bar dataKey="value" fill="#4ea1ff" opacity={0.8} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    }
-
-    // Default: Simple Bar Chart
-    if (stateKey && numericCols.length === 1) {
-      const barData = dataRows.slice(0, 15).map(row => ({
-        state: (row[stateKey] || 'Unknown').substring(0, 12),
-        value: Number(row[numericCols[0]]) || 0
-      }));
-
-      return (
-        <div style={{ width: '100%', height: '350px', padding: '10px 0' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={barData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
-              <XAxis 
-                dataKey="state" 
-                angle={-45} 
-                textAnchor="end" 
-                height={80}
-                tick={{ fill: '#bbb', fontSize: 10 }}
-              />
-              <YAxis tick={{ fill: '#bbb', fontSize: 11 }} />
-              <Tooltip formatter={(v) => Number(v).toFixed(3)} />
-              <Bar dataKey="value" fill="#4ea1ff" opacity={0.8} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    }
-
-    return null;
+    
+    return (
+      <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+        Unable to visualize this data automatically.
+      </div>
+    );
   };
 
   return (
     <>
-      {/* Floating Button */}
-      <div 
-        className={`chatbot-fab ${isOpen ? 'hidden' : ''}`}
-        onClick={() => setIsOpen(true)}
-        title="Ask TecViz AI"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2C6.48 2 2 6.48 2 12C2 13.93 2.6 15.72 3.6 17.2L2.05 21.95L6.8 20.4C8.28 21.4 10.07 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C10.33 20 8.77 19.48 7.47 18.6L7.1 18.35L4.55 19.05L5.25 16.55L4.97 16.15C4.06 14.83 3.5 13.23 3.5 11.5C3.5 7.36 6.86 4 11 4C15.14 4 18.5 7.36 18.5 11.5C18.5 15.64 15.14 19 11 19H12V20Z" fill="white"/>
-          <circle cx="8" cy="12" r="1" fill="white"/>
-          <circle cx="12" cy="12" r="1" fill="white"/>
-          <circle cx="16" cy="12" r="1" fill="white"/>
-        </svg>
-      </div>
+      {/* Floating Chat Button */}
+      {!isOpen && (
+        <button 
+          className="chatbot-fab"
+          onClick={() => setIsOpen(true)}
+        >
+          <span style={{ fontSize: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4ea1ff' }}>
+            <TrendingUp size={28} strokeWidth={2.5} />
+          </span>
+        </button>
+      )}
 
-      {/* Chatbot Panel */}
+      {/* Chat Window */}
       {isOpen && (
         <div className="chatbot-floating-panel">
-          {/* Header */}
           <div className="chatbot-floating-header">
-            <div className="chatbot-header-content">
-              <h3>TecViz AI Assistant</h3>
-              <span className="chatbot-subtitle">Ask about your data or UI</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <TrendingUp size={20} strokeWidth={2.5} />
+              <span style={{ fontWeight: '600' }}>TecVis 2.0 AI</span>
             </div>
-            <div className="chatbot-header-actions">
-              {history.length > 0 && (
-                <button 
-                  className="chatbot-icon-btn" 
-                  onClick={clearHistory}
-                  title="Clear history"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                </button>
-              )}
-              <button 
-                className="chatbot-icon-btn" 
-                onClick={() => setIsOpen(false)}
-                title="Close"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path d="M18 6L6 18M6 6l12 12" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={clearHistory} className="chatbot-icon-btn" title="Clear History"><Trash2 size={16} /></button>
+              <button onClick={() => setIsOpen(false)} className="chatbot-icon-btn"><X size={16} /></button>
             </div>
           </div>
 
-          {/* Chat History */}
           <div className="chatbot-floating-history">
             {history.length === 0 && (
               <div className="chatbot-welcome">
-                <div className="welcome-icon">💬</div>
-                <h4>How can I help you?</h4>
-                <p>Ask questions about your emotion data or the UI:</p>
+                <div className="welcome-icon">👋</div>
+                <h4>Hi! I'm your AI analytics assistant.</h4>
+                <p>Ask me about emotion trends, comparisons, or specific tweets.</p>
+                
                 <div className="example-queries">
-                  <button className="example-query" onClick={() => setQuestion("Show daily average anger in CA for last 30 days")}>
-                    📊 Show daily anger in CA
+                  <button className="example-query" onClick={() => setQuestion("Show me the trend of joy in Texas over the last 7 days")}>
+                    📈 Show me the trend of joy in Texas over the last 7 days
                   </button>
-                  <button className="example-query" onClick={() => setQuestion("What does this visualization show?")}>
-                    🎨 Explain this view
+                  <button className="example-query" onClick={() => setQuestion("Compare anger in California and Texas")}>
+                    🆚 Compare anger in California and Texas
                   </button>
-                  <button className="example-query" onClick={() => setQuestion("Which state has highest joy?")}>
-                    😊 Highest joy state
+                  <button className="example-query" onClick={() => setQuestion("Show me the trend of anger/fear in New York")}>
+                    🏆 Show me the trend of anger/fear in New York
                   </button>
                 </div>
               </div>
             )}
-
-            {history.map((item, idx) => (
-              <div key={idx} className={`chat-message chat-${item.type}`}>
-                {item.type === 'question' && (
-                  <div className="message-wrapper user-wrapper">
-                    <div className="message-icon user-icon">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <div className="message-bubble user-bubble">
-                      <div className="bubble-content">
-                        {item.text}
-                      </div>
-                    </div>
+            
+            {history.map((msg, idx) => (
+              <div key={idx} className="chat-message">
+                {msg.type === 'question' && (
+                  <div className="message-wrapper bot-wrapper">
+                    <div className="message-icon user-icon"><User size={18} /></div>
+                    <div className="message-bubble user-bubble">{msg.text}</div>
                   </div>
                 )}
-
-                {item.type === 'answer' && (
+                
+                {msg.type === 'answer' && (
                   <div className="message-wrapper bot-wrapper">
-                    <div className="message-icon bot-icon">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <circle cx="12" cy="5" r="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="m12 7-3 5h6l-3-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <line x1="9" y1="9" x2="9.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <line x1="15" y1="9" x2="15.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
+                    <div className="message-icon bot-icon"><Brain size={18} /></div>
                     <div className="message-bubble bot-bubble">
-                      <div className="bubble-content">
-                        {/* Natural Language Response - Always Visible */}
-                        {item.message && (
-                          <div 
-                            className="nl-response bot-text"
-                            dangerouslySetInnerHTML={{ __html: parseMarkdown(item.message) }}
-                          />
-                        )}
-
-                        {/* Data Query Button - Show compact button if SQL/data exists */}
-                        {(item.sql || (item.rows && item.rows.length > 0)) && (
-                          <div className="data-action-section">
-                            <button 
-                              className="data-action-btn"
-                              onClick={() => openSqlModal(item, idx)}
-                              title="View query details and data"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-                                <path d="M9 9h6v6H9z" fill="currentColor"/>
-                                <path d="M16 3v4M8 3v4M3 11h18" stroke="currentColor" strokeWidth="2"/>
-                              </svg>
-                              <span>Query Details</span>
-                              {item.rows && item.rows.length > 0 && (
-                                <span className="row-count">({item.rows.length} rows)</span>
-                              )}
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      <div dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.message) }} />
+                      
+                      {/* SQL & Data Preview Button */}
+                      {(msg.sql || (msg.rows && msg.rows.length > 0)) && (
+                        <button 
+                          className="view-analysis-btn"
+                          onClick={() => openSqlModal(msg, idx)}
+                        >
+                          📊 View Analysis
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
-
-                {(item.type === 'error' || item.type === 'status') && (
-                  <div className="message-wrapper bot-wrapper">
-                    <div className="message-icon bot-icon error-icon">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-                        <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" strokeWidth="2"/>
-                        <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" strokeWidth="2"/>
-                      </svg>
-                    </div>
-                    <div className="message-bubble error-bubble">
-                      <div className="bubble-content">{item.text}</div>
-                    </div>
+                
+                {msg.type === 'status' && (
+                  <div className="status-message">
+                    <span className="status-dot"></span>
+                    {msg.text}
+                  </div>
+                )}
+                
+                {msg.type === 'error' && (
+                  <div className="error-message">
+                    ⚠️ {msg.text}
                   </div>
                 )}
               </div>
             ))}
-
+            
             {loading && (
-              <div className="chat-message chat-loading">
-                <div className="message-wrapper bot-wrapper">
-                  <div className="message-icon bot-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <circle cx="12" cy="5" r="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="m12 7-3 5h6l-3-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <line x1="9" y1="9" x2="9.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <line x1="15" y1="9" x2="15.01" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  <div className="message-bubble bot-bubble">
-                    <div className="bubble-content">
-                      <div className="typing-indicator">
-                        <span></span><span></span><span></span>
-                      </div>
-                    </div>
-                  </div>
+              <div className="chat-message">
+                <div className="message-bubble bot-bubble">
+                <div className="typing-indicator">
+                  <span></span><span></span><span></span>
                 </div>
+              </div>
               </div>
             )}
           </div>
 
-          {/* Input Footer */}
           <div className="chatbot-floating-footer">
             <div className="input-row">
               <textarea
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Ask anything..."
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    ask();
+                  }
+                }}
+                placeholder="Ask a question about the data..."
                 disabled={loading}
+                autoFocus
                 rows={1}
               />
               <button 
-                onClick={ask}
+                onClick={ask} 
                 disabled={loading || !question.trim()}
                 className="send-btn"
               >
-                {loading ? '...' : '→'}
+                ➤
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SQL Data Modal */}
+      {/* SQL & Data Modal */}
       {sqlModal && (
         <div className="sql-modal-overlay" onClick={closeSqlModal}>
-          <div className="sql-modal" onClick={(e) => e.stopPropagation()} style={{ width: '820px', maxWidth: '94vw', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div className="sql-modal-content" onClick={e => e.stopPropagation()}>
             <div className="sql-modal-header">
-              <div className="modal-title">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-                  <path d="M9 9h6v6H9z" fill="currentColor"/>
-                  <path d="M16 3v4M8 3v4M3 11h18" stroke="currentColor" strokeWidth="2"/>
-                </svg>
-                <span>Query Details</span>
-              </div>
-              <button className="modal-close-btn" onClick={closeSqlModal}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </button>
+              <h3>Analysis Details</h3>
+              <button onClick={closeSqlModal} className="close-modal-btn">✕</button>
             </div>
+            
+            <div className="sql-modal-body">
+              {/* 1. Visualization Section (Microsoft Fabric Style) */}
+              <div className="modal-section">
+                <div 
+                  className="section-header" 
+                  onClick={() => setShowVisualization(!showVisualization)}
+                  style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: '600' }}>Visualization</span>
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#888' }}>
+                    {showVisualization ? '▼' : '▶'}
+                  </span>
+                </div>
+                
+                {showVisualization && (
+                  <div className="section-content">
+                    {/* Reasoning Block */}
+                    {sqlModal.chartReasoning && (
+                      <div style={{ 
+                        marginBottom: '16px', 
+                        padding: '12px', 
+                        background: 'rgba(78, 161, 255, 0.1)', 
+                        borderLeft: '3px solid #4ea1ff',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        color: '#e0e0e0'
+                      }}>
+                        <strong>Why this chart?</strong> {sqlModal.chartReasoning}
+                      </div>
+                    )}
 
-            <div className="sql-modal-content" style={{ overflow: 'auto' }}>
-              {sqlModal.sql && (
-                <div className="modal-section">
-                  <h4>SQL Query</h4>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <button
-                      className="data-action-btn"
-                      onClick={() => {
-                        try {
-                          navigator.clipboard.writeText(sqlModal.sql);
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 1500);
-                        } catch (e) {
-                          console.error('Copy failed', e);
-                        }
-                      }}
-                      title="Copy SQL to clipboard"
-                    >
-                      Copy SQL
-                    </button>
-                    {copied && (
-                      <span style={{ color: '#7CFC00', fontSize: '12px' }}>Copied!</span>
+                    {/* Chart Preview */}
+                    {showChartPreview ? (
+                      <ChartRenderer 
+                        rows={sqlModal.rows} 
+                        hint={sqlModal.chartHint} 
+                        config={sqlModal.chartConfig}
+                        code={sqlModal.chartCode}
+                      />
+                    ) : (
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#888', border: '1px dashed #444', borderRadius: '8px' }}>
+                        <button 
+                          onClick={() => setShowChartPreview(true)}
+                          style={{
+                            padding: '8px 16px',
+                            background: '#2a2a2a',
+                            border: '1px solid #444',
+                            borderRadius: '6px',
+                            color: '#fff',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Load Chart
+                        </button>
+                      </div>
+                    )}
+
+                    {/* View Code Block */}
+                    {sqlModal.chartCode && (
+                      <div style={{ marginTop: '16px' }}>
+                         <details>
+                           <summary style={{ cursor: 'pointer', color: '#888', fontSize: '12px' }}>View Generated React Code</summary>
+                           <pre style={{ 
+                             background: '#111', 
+                             padding: '12px', 
+                             borderRadius: '6px', 
+                             overflowX: 'auto', 
+                             fontSize: '11px',
+                             color: '#a5d6ff',
+                             marginTop: '8px'
+                           }}>
+                             {sqlModal.chartCode}
+                           </pre>
+                         </details>
+                      </div>
                     )}
                   </div>
-                  <div className="sql-preview-modal">
-                    <code>{sqlModal.sql}</code>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
 
-              {sqlModal.rows && sqlModal.rows.length > 0 && (
-                <div className="modal-section" style={{ maxHeight: '48vh', overflow: 'auto' }}>
-                  <h4>Results ({sqlModal.rows.length} rows)</h4>
-                  <div className="results-table-modal" style={{ overflow: 'auto' }}>
-                    <table className="results-table">
-                      <thead>
-                        <tr>
-                          {Object.keys(sqlModal.rows[0]).map((col, i) => (
-                            <th key={i}>{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sqlModal.rows.map((row, i) => (
-                          <tr key={i}>
-                            {Object.values(row).map((val, j) => (
-                              <td key={j}>{
-                                typeof val === 'number' ? val.toFixed(3) :
-                                typeof val === 'object' ? JSON.stringify(val) :
-                                val
-                              }</td>
+              {/* 2. Data Table Section */}
+              <div className="modal-section">
+                <div 
+                  className="section-header" 
+                  onClick={() => setShowDataTable(!showDataTable)}
+                  style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: '600' }}>Data Table ({sqlModal.rows ? sqlModal.rows.length : 0} rows)</span>
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#888' }}>
+                    {showDataTable ? '▼' : '▶'}
+                  </span>
+                </div>
+                
+                {showDataTable && sqlModal.rows && sqlModal.rows.length > 0 && (
+                  <div className="section-content">
+                    <div className="table-container">
+                      <table>
+                        <thead>
+                          <tr>
+                            {Object.keys(sqlModal.rows[0]).map(key => (
+                              <th key={key}>{key}</th>
                             ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {(sqlModal.chartHint || (sqlModal.rows && sqlModal.rows.length > 0)) && (
-                <div className="modal-section">
-                  <div className="hint-badge-modal">
-                    <strong>Visualization Suggestion:</strong> {sqlModal.chartHint || 'Auto-detected'}
-                  </div>
-                  {/* Render on demand to avoid overhead */}
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button
-                      className="data-action-btn"
-                      onClick={() => setShowChartPreview(prev => !prev)}
-                      title={showChartPreview ? 'Hide visualization' : 'Visualize results'}
-                    >
-                      {showChartPreview ? 'Hide Visualization' : 'Visualize'}
-                    </button>
-                  </div>
-                  {showChartPreview && (
-                    <div style={{ marginTop: '10px' }}>
-                      <ChartRenderer rows={sqlModal.rows} hint={sqlModal.chartHint} />
+                        </thead>
+                        <tbody>
+                          {sqlModal.rows.slice(0, 100).map((row, i) => (
+                            <tr key={i}>
+                              {Object.values(row).map((val, j) => (
+                                <td key={j}>
+                                  {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {sqlModal.rows.length > 100 && (
+                        <div style={{ padding: '10px', textAlign: 'center', color: '#888', fontSize: '12px' }}>
+                          Showing first 100 rows of {sqlModal.rows.length}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. SQL Query Section */}
+              <div className="modal-section">
+                <div 
+                  className="section-header" 
+                  onClick={() => setShowSqlQuery(!showSqlQuery)}
+                  style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontWeight: '600' }}>SQL Query</span>
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#888' }}>
+                    {showSqlQuery ? '▼' : '▶'}
+                  </span>
                 </div>
-              )}
+                
+                {showSqlQuery && (
+                  <div className="section-content" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <button 
+                      className="copy-btn"
+                      style={{ position: 'static', width: 'fit-content' }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(sqlModal.sql);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                    >
+                      {copied ? '✓ Copied' : 'Copy SQL'}
+                    </button>
+                    <div className="sql-block">
+                      <pre>{sqlModal.sql}</pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         </div>
@@ -758,4 +1058,3 @@ export default function FloatingChatbot({ currentPage = 'live' }) {
     </>
   );
 }
-

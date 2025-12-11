@@ -7,6 +7,181 @@ from ..schema_config import VALID_TABLES, VALID_COLUMNS
 ALLOWED_TABLES = set(VALID_TABLES)
 ALLOWED_COLUMNS = set(VALID_COLUMNS['tweets'])
 
+def fix_order_by_alias_references(sql: str) -> str:
+    """
+    Fix ORDER BY clauses that reference column aliases.
+    PostgreSQL doesn't allow ORDER BY alias - must repeat expression or use subquery.
+    """
+    try:
+        sql_upper = sql.upper()
+        
+        # Check if ORDER BY exists
+        if "ORDER BY" not in sql_upper:
+            return sql
+        
+        # Extract SELECT clause to find aliases
+        select_match = re.search(r'SELECT\s+(.+?)\s+FROM', sql_upper, re.IGNORECASE | re.DOTALL)
+        if not select_match:
+            return sql
+        
+        select_clause = select_match.group(1).strip()
+        
+        # Extract ORDER BY clause
+        order_by_match = re.search(r'ORDER\s+BY\s+(.+?)(?:\s+LIMIT|\s*;|$)', sql_upper, re.IGNORECASE | re.DOTALL)
+        if not order_by_match:
+            return sql
+        
+        order_by_clause = order_by_match.group(1).strip()
+        
+        # Find all aliases in SELECT (pattern: expression AS alias)
+        alias_map = {}
+        alias_pattern = r'(.+?)\s+AS\s+(\w+)'
+        for match in re.finditer(alias_pattern, select_clause, re.IGNORECASE):
+            expression = match.group(1).strip()
+            alias = match.group(2).strip()
+            alias_map[alias.upper()] = expression
+        
+        # Check if ORDER BY references any aliases
+        order_by_upper = order_by_clause.upper()
+        has_alias_ref = False
+        for alias in alias_map.keys():
+            # Check if alias appears as a standalone word in ORDER BY
+            pattern = r'\b' + re.escape(alias) + r'\b'
+            if re.search(pattern, order_by_upper):
+                has_alias_ref = True
+                break
+        
+        if not has_alias_ref:
+            return sql
+        
+        # Replace aliases with their expressions in ORDER BY
+        fixed_order_by = order_by_clause
+        for alias, expression in alias_map.items():
+            # Replace alias with expression (case-insensitive, word boundary)
+            pattern = r'\b' + re.escape(alias) + r'\b'
+            fixed_order_by = re.sub(pattern, f'({expression})', fixed_order_by, flags=re.IGNORECASE)
+        
+        # Replace ORDER BY clause in original SQL
+        order_by_start = sql_upper.find('ORDER BY')
+        if order_by_start == -1:
+            return sql
+        
+        # Find where ORDER BY clause ends (LIMIT or end of SQL)
+        order_by_end = sql_upper.find(' LIMIT', order_by_start)
+        if order_by_end == -1:
+            order_by_end = sql_upper.find(';', order_by_start)
+        if order_by_end == -1:
+            order_by_end = len(sql)
+        
+        # Replace the ORDER BY clause
+        new_sql = sql[:order_by_start + 8] + ' ' + fixed_order_by + sql[order_by_end:]
+        
+        print(f"[validator.py] Fixed ORDER BY alias references: expanded aliases to expressions")
+        return new_sql
+        
+    except Exception as e:
+        print(f"[validator.py] Error in fix_order_by_alias_references: {e}")
+        return sql
+
+
+def ensure_order_by_in_select(sql: str) -> str:
+    """Auto-add missing ORDER BY columns/aggregates to SELECT clause."""
+    try:
+        # Simple regex-based approach for robustness
+        sql_upper = sql.upper()
+        
+        # Check if ORDER BY exists
+        if "ORDER BY" not in sql_upper:
+            return sql
+        
+        # Extract ORDER BY clause
+        order_by_match = re.search(r'ORDER\s+BY\s+(.+?)(?:\s+LIMIT|\s*;|$)', sql_upper, re.IGNORECASE | re.DOTALL)
+        if not order_by_match:
+            return sql
+        
+        order_by_clause = order_by_match.group(1).strip()
+        
+        # Extract aggregate functions from ORDER BY (AVG, SUM, COUNT, etc.)
+        agg_patterns = [
+            (r'AVG\(([^)]+)\)', 'AVG'),
+            (r'SUM\(([^)]+)\)', 'SUM'),
+            (r'COUNT\(([^)]+)\)', 'COUNT'),
+            (r'MAX\(([^)]+)\)', 'MAX'),
+            (r'MIN\(([^)]+)\)', 'MIN'),
+            (r'STDDEV\(([^)]+)\)', 'STDDEV'),
+        ]
+        
+        # Check SELECT clause
+        select_match = re.search(r'SELECT\s+(.+?)\s+FROM', sql_upper, re.IGNORECASE | re.DOTALL)
+        if not select_match:
+            return sql
+        
+        select_clause = select_match.group(1).strip()
+        
+        # Find missing aggregates in SELECT
+        missing_aggregates = []
+        for pattern, agg_type in agg_patterns:
+            matches = re.finditer(pattern, order_by_clause, re.IGNORECASE)
+            for match in matches:
+                full_expr = match.group(0)  # e.g., "AVG(anger)"
+                column = match.group(1).lower()  # e.g., "anger"
+                
+                # Check if this aggregate is already in SELECT
+                # Look for AVG(anger), avg(anger), or aliases
+                if full_expr not in select_clause and full_expr.lower() not in select_clause.lower():
+                    # Check for common aliases
+                    alias_patterns = [
+                        f'{agg_type.lower()}_{column}',
+                        f'avg_{column}',
+                        f'{column}_avg',
+                        'avg_value',
+                        'metric'
+                    ]
+                    found_alias = False
+                    for alias in alias_patterns:
+                        if alias in select_clause.lower():
+                            found_alias = True
+                            break
+                    
+                    if not found_alias:
+                        missing_aggregates.append((agg_type, column, full_expr))
+        
+        if not missing_aggregates:
+            return sql
+        
+        # Add missing aggregates to SELECT
+        # Find the position to insert (before FROM)
+        from_pos = sql_upper.find(' FROM')
+        if from_pos == -1:
+            return sql
+        
+        # Build new SELECT clause additions
+        additions = []
+        for agg_type, column, full_expr in missing_aggregates:
+            # Smart alias based on column name
+            if 'anger' in column:
+                alias = 'avg_anger' if agg_type == 'AVG' else f'{agg_type.lower()}_{column}'
+            elif 'fear' in column:
+                alias = 'avg_fear' if agg_type == 'AVG' else f'{agg_type.lower()}_{column}'
+            elif 'joy' in column:
+                alias = 'avg_joy' if agg_type == 'AVG' else f'{agg_type.lower()}_{column}'
+            else:
+                alias = f'{agg_type.lower()}_{column}' if agg_type != 'AVG' else f'avg_{column}'
+            
+            additions.append(f", {full_expr} AS {alias}")
+        
+        # Insert additions before FROM
+        insert_pos = from_pos
+        new_sql = sql[:insert_pos] + "".join(additions) + sql[insert_pos:]
+        
+        print(f"[validator.py] Auto-added missing ORDER BY aggregates to SELECT: {[a[2:] for a in additions]}")
+        return new_sql
+        
+    except Exception as e:
+        print(f"[validator.py] Error in ensure_order_by_in_select: {e}")
+        return sql
+
+
 def ensure_group_by(sql: str) -> str:
     """Auto-add missing non-aggregate selected columns to GROUP BY (PostgreSQL)."""
     try:

@@ -61,3 +61,36 @@
 .tab-content.active {
   display: block;
 }
+
+.tab-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin: 0 20px;
+  width: calc(100% - 40px);
+}
+
+.tab-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.tab-controls-row {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.tab-chart-container {
+  maxHeight: 600px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  padding: 10px;
+  width: 100%;
+}

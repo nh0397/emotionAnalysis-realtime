@@ -81,6 +81,12 @@ Indexes:
 • Use 'tweets' for: Individual tweet analysis, detailed queries, time series, specific tweet searches
 • Use 'emotion_aggregates' for: Quick state comparisons, overview dashboards, pre-calculated summaries
 
+=== CRITICAL: TIME COLUMN USAGE ===
+• ALWAYS use 'timestamp' column for time-based queries and time series analysis
+• 'created_at' is for internal database tracking only - DO NOT USE in queries
+• For time filtering: WHERE timestamp >= '2025-01-01'
+• For time series: SELECT DATE(timestamp), AVG(emotion) FROM tweets GROUP BY DATE(timestamp) ORDER BY DATE(timestamp)
+
 QUERY PATTERNS & EXAMPLES:
 - Individual tweets: SELECT * FROM tweets WHERE state_code = 'CA' LIMIT 100
 - Tweet-level averages: SELECT state_name, AVG(anger) FROM tweets GROUP BY state_name
@@ -160,12 +166,18 @@ STATE_MAPPINGS = {
     'vermont': 'VT', 'wyoming': 'WY'
 }
 
+def get_state_code(state_name: str) -> str:
+    """Get 2-letter state code from full name"""
+    return STATE_MAPPINGS.get(state_name.lower(), state_name.upper())
+
 def get_schema_context() -> str:
     """
     Get the database schema context for NL→SQL generation.
     This is loaded from the config, making it easy to update when schema changes.
     """
-    return DATABASE_SCHEMA
+    # Add state mappings to context to help LLM with state names
+    mapping_str = "STATE NAME MAPPINGS (Use these codes):\n" + ", ".join([f"{k.title()}='{v}'" for k, v in STATE_MAPPINGS.items()])
+    return f"{DATABASE_SCHEMA}\n\n{mapping_str}"
 
 def validate_column_name(column: str) -> bool:
     """Check if a column name is valid for the tweets table"""
@@ -175,6 +187,71 @@ def is_emotion_column(column: str) -> bool:
     """Check if a column is an emotion column"""
     return column.lower() in [col.lower() for col in EMOTION_COLUMNS]
 
-def get_state_code(state_name: str) -> str:
-    """Convert state name to state code"""
-    return STATE_MAPPINGS.get(state_name.lower(), state_name.upper())
+# Few-shot examples for complex queries
+FEW_SHOT_EXAMPLES = """
+EXAMPLE 1: Time Series Analysis
+Question: "Show me the trend of anger in California over the last 7 days"
+SQL:
+SELECT DATE(timestamp) as date, AVG(anger) as anger_avg 
+FROM tweets 
+WHERE state_code = 'CA' 
+  AND timestamp >= CURRENT_DATE - INTERVAL '7 days'
+GROUP BY DATE(timestamp) 
+ORDER BY DATE(timestamp) ASC;
+
+EXAMPLE 2: State Comparison
+Question: "Compare the joy levels between Texas and New York"
+SQL:
+SELECT state_name, AVG(joy) as joy_avg 
+FROM emotion_aggregates 
+WHERE state_code IN ('TX', 'NY')
+ORDER BY joy_avg DESC;
+
+EXAMPLE 3: Top N Ranking
+Question: "Which 5 states are the happiest?"
+SQL:
+SELECT state_name, joy_avg 
+FROM emotion_aggregates 
+ORDER BY joy_avg DESC 
+LIMIT 5;
+
+EXAMPLE 4: Composition/Breakdown
+Question: "What is the sentiment breakdown for Florida?"
+SQL:
+SELECT 
+  sentiment_positive_count, 
+  sentiment_negative_count, 
+  sentiment_neutral_count 
+FROM emotion_aggregates 
+WHERE state_code = 'FL';
+
+EXAMPLE 5: Complex Multi-Metric
+Question: "Show me anger vs fear for the top 10 states by tweet count"
+SQL:
+SELECT state_name, anger_avg, fear_avg, tweet_count
+FROM emotion_aggregates
+ORDER BY tweet_count DESC
+LIMIT 10;
+
+EXAMPLE 6: Top Emotions for a Single State (Unpivoting)
+Question: "What are the top emotions in Texas?"
+SQL:
+SELECT
+    L.emotion_name,
+    L.emotion_value
+FROM emotion_aggregates
+CROSS JOIN LATERAL (
+    VALUES 
+        ('anger', anger_avg),
+        ('joy', joy_avg),
+        ('fear', fear_avg),
+        ('sadness', sadness_avg),
+        ('surprise', surprise_avg),
+        ('anticipation', anticipation_avg),
+        ('trust', trust_avg),
+        ('disgust', disgust_avg)
+) AS L(emotion_name, emotion_value)
+WHERE state_code = 'TX'
+ORDER BY emotion_value DESC
+LIMIT 5;
+"""

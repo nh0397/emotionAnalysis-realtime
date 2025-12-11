@@ -13,7 +13,7 @@ from chatbot_api.services.validator import validate_sql, add_limit_if_missing
 from chatbot_api.services.db import run_sql, check_explain_cost
 from chatbot_api.services.chart_hints import infer_chart_type
 
-app = FastAPI(title="TecViz Chatbot API")
+app = FastAPI(title="TecVis 2.0 Chatbot API")
 
 # CORS for frontend
 app.add_middleware(
@@ -34,7 +34,7 @@ class VisionQuestion(BaseModel):
 @app.get("/health")
 def health():
     """Health check endpoint"""
-    return {"status": "ok", "service": "TecViz Chatbot API"}
+    return {"status": "ok", "service": "TecVis 2.0 Chatbot API"}
 
 @app.post("/chat")
 def chat(q: Question):

@@ -28,7 +28,21 @@ def run_sql(sql: str, timeout: Optional[int] = 10) -> Tuple[List[Dict], Optional
                 cur.execute(sql)
                 
                 # Fetch results
-                columns = [desc[0] for desc in cur.description] if cur.description else []
+                if not cur.description:
+                    return [], None
+                
+                # Get column names - handle duplicate names by adding index
+                raw_columns = [desc[0] for desc in cur.description]
+                columns = []
+                seen = {}
+                for col in raw_columns:
+                    if col in seen:
+                        seen[col] += 1
+                        columns.append(f"{col}_{seen[col]}")
+                    else:
+                        seen[col] = 0
+                        columns.append(col)
+                
                 rows = cur.fetchall()
                 
                 # Convert to list of dicts

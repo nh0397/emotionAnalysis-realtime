@@ -5,7 +5,8 @@ Converts SQL query results into human-readable English responses using LLM
 
 import requests
 from typing import List, Dict, Optional
-from ..config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT, OLLAMA_TEMP_SMALLTALK
+from ..config import GEMINI_API_KEY, GEMINI_MODEL_NL2SQL
+
 
 
 def generate_nl_response(question: str, sql: str, rows: List[Dict], chart_hint: Optional[str] = None, current_page: Optional[str] = None) -> str:
@@ -27,6 +28,49 @@ def generate_nl_response(question: str, sql: str, rows: List[Dict], chart_hint: 
     
     # Prepare data summary for the LLM
     data_summary = prepare_data_summary(rows, max_rows=5)
+    
+    # Use Gemini for fast, natural response
+    try:
+        # Use gemini-1.5-flash as it is most stable for v1beta API
+        model_name = "gemini-1.5-flash" 
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        
+        prompt = f"""You are a helpful data analyst. Explain these query results in 1-2 natural English sentences.
+        
+        User Question: "{question}"
+        
+        Data (top 5 rows):
+        {data_summary}
+        
+        Rules:
+        - Be concise and direct.
+        - Mention key numbers/trends.
+        - No technical jargon.
+        - No "Here is the data" intros.
+        """
+        
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}]
+        }
+        
+        print(f"[nl_response] Calling Gemini ({model_name})...")
+        response = requests.post(url, json=payload, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                nl_response = candidates[0].get("content", {}).get("parts", [])[0].get("text", "").strip()
+                if chart_hint:
+                     nl_response += f"\n\n(Visualized as {chart_hint.replace('_', ' ')})"
+                return nl_response
+        
+        print(f"[nl_response] Gemini API failed: {response.status_code} - {response.text}")
+        return fallback_response(rows, question)
+
+    except Exception as e:
+        print(f"[nl_response] Gemini CRASH: {e}")
+        return fallback_response(rows, question)
     
     # Build the prompt
     page_context = {
@@ -62,7 +106,7 @@ Please provide a natural, conversational response in English that answers the us
         response = requests.post(
             f"{OLLAMA_BASE_URL}/api/chat",
             json={
-                "model": OLLAMA_MODEL,
+                "model": OLLAMA_MODEL_NL_RESPONSE,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -77,19 +121,26 @@ Please provide a natural, conversational response in English that answers the us
         
         if response.status_code == 200:
             result = response.json()
+            print(f"[nl_response.py:79] Ollama response structure: {list(result.keys())}")
+            # Ollama /api/chat returns: {"message": {"content": "..."}}
             nl_response = result.get("message", {}).get("content", "").strip()
+            # Fallback if structure is different
+            if not nl_response:
+                nl_response = result.get("response", "").strip()
             
-            # Add chart hint if available
+            print(f"[nl_response.py:85] Extracted response length: {len(nl_response) if nl_response else 0}")
+            
+            # Add chart hint if available (no emojis)
             if chart_hint and nl_response:
-                nl_response += f"\n\n💡 This data would work well as a {chart_hint}."
+                nl_response += f"\n\nThis data would work well as a {chart_hint}."
             
             return nl_response if nl_response else fallback_response(rows, question)
         else:
-            print(f"[nl_response.py:88] Ollama error: {response.status_code}")
+            print(f"[nl_response.py:93] Ollama error: {response.status_code} - {response.text[:200]}")
             return fallback_response(rows, question)
     
     except Exception as e:
-        print(f"[nl_response.py:92] Error generating response: {e}")
+        print(f"[nl_response.py:97] Error generating response: {e}")
         return fallback_response(rows, question)
 
 
@@ -136,28 +187,48 @@ def prepare_data_summary(rows: List[Dict], max_rows: int = 5) -> str:
 def fallback_response(rows: List[Dict], question: str) -> str:
     """
     Generate a simple fallback response if LLM fails
-    
-    Args:
-        rows: Query results
-        question: Original question
-    
-    Returns:
-        Simple summary string
     """
+    if not rows:
+        return "I couldn't find any data matching that request."
+        
     row_count = len(rows)
+    first_row = rows[0]
     
-    if row_count == 1:
-        # Single result - show key-value pairs
-        row = rows[0]
-        parts = []
-        for key, val in row.items():
-            if isinstance(val, float):
-                parts.append(f"{key}: {val:.3f}")
-            else:
-                parts.append(f"{key}: {val}")
-        return f"Found one result: {', '.join(parts)}"
-    
-    else:
-        # Multiple results - show count and first few
-        return f"Found {row_count} results matching your query. Check the table below for details."
+    # Try to construct a natural sentence from the first row
+    try:
+        # Find numeric and text columns
+        numeric_cols = [k for k, v in first_row.items() if isinstance(v, (int, float))]
+        text_cols = [k for k, v in first_row.items() if isinstance(v, str) and k not in ['created_at', 'timestamp', 'date']]
+        
+        # If it's a comparison or list (multiple rows)
+        if row_count > 1:
+            if 'state_code' in first_row and numeric_cols:
+                # Comparison: "California has 0.25 anger, Texas has 0.12 anger..."
+                metric = numeric_cols[0]
+                summary = []
+                for r in rows[:3]:
+                    state = r.get('state_name', r.get('state_code', 'Unknown'))
+                    val = r.get(metric, 0)
+                    summary.append(f"{state} ({val:.2f})")
+                
+                return f"Here is the data for {', '.join(summary)}. See the chart for the full comparison."
+            
+            return f"I found {row_count} records. The top result is {list(first_row.values())[0]}."
+
+        # Single row result
+        if row_count == 1:
+            # "The average anger in California is 0.25"
+            parts = []
+            for k, v in first_row.items():
+                if isinstance(v, float):
+                    parts.append(f"{k} is {v:.3f}")
+                else:
+                    parts.append(f"{k}: {v}")
+            return f"Here is the answer: {', '.join(parts)}."
+            
+    except Exception:
+        pass
+        
+    # Ultimate fallback
+    return "I've retrieved the data you asked for. Please check the table and chart below."
 

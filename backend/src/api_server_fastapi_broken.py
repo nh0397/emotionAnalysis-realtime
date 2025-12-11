@@ -37,7 +37,7 @@ from chatbot_api.config import (
 )
 
 app = FastAPI(
-    title="TecViz API",
+    title="TecVis 2.0 API",
     description="Real-time emotion analytics and NL chatbot",
     version="3.0.0"
 )
@@ -110,7 +110,7 @@ def root():
     """API root endpoint"""
     return {
         "status": "success",
-        "message": "TecViz API - FastAPI Edition",
+        "message": "TecVis 2.0 API - FastAPI Edition",
         "version": "3.0.0",
         "endpoints": {
             "real-time": "/tweets/stream",
@@ -771,7 +771,7 @@ def handle_smalltalk(question: str) -> dict:
             f"{OLLAMA_BASE_URL}/api/generate",
             json={
                 "model": OLLAMA_MODEL,
-                "prompt": f"You are TecViz AI, a friendly assistant for an emotion analytics platform. Respond briefly and warmly to:\n{question}",
+                "prompt": f"You are TecVis 2.0 AI, a friendly assistant for an emotion analytics platform. Respond briefly and warmly to:\n{question}",
                 "stream": False,
                 "options": {"temperature": OLLAMA_TEMP_SMALLTALK}
             },
@@ -987,7 +987,7 @@ def handle_rag_query(question: str, screenshot: Optional[str], context_info: dic
     
     # Get explanation for current page
     explanation = page_explanations.get(current_page, 
-        f"This is the TecViz emotion analytics platform analyzing social media data from {date_range}.")
+        f"This is the TecVis 2.0 emotion analytics platform analyzing social media data from {date_range}.")
     
     # Handle contextual questions like "and this one?"
     contextual_phrases = ['and this one', 'this one', 'and this', 'what about this', 'and here']
