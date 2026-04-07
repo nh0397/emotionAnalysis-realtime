@@ -1,91 +1,106 @@
-/* X-like Dark Theme */
-body {
-  margin: 0;
-  background-color: #000000;
-  color: #ffffff;
-}
-
 .App {
+  text-align: center;
   min-height: 100vh;
-  background: #000000;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-.App-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid #2f3336;
-}
-
-.App-header h1 {
-  margin: 0;
-  font-size: 1.3rem;
-  font-weight: 700;
   color: #ffffff;
-}
-
-.App-header p {
-  margin: 0.5rem 0 0 0;
-  font-size: 0.9rem;
-  color: #71767b;
-}
-
-.connection-status {
-  margin-top: 0.75rem;
-}
-
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 9999px;
-  background: #16181c;
-  color: #71767b;
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.status-indicator.connected {
-  color: #00ba7c;
-}
-
-.status-indicator.connecting {
-  color: #ffd700;
-}
-
-.status-indicator.error {
-  color: #f4212e;
+  background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%);
 }
 
 .App-main {
-  width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
-  border-left: 1px solid #2f3336;
-  border-right: 1px solid #2f3336;
-  min-height: calc(100vh - 4rem);
+  padding: 20px;
+  color: #ffffff;
 }
 
-/* Responsive Design */
-@media (max-width: 600px) {
-  .App-header {
-    padding: 0.75rem;
-  }
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
 
-  .App-header h1 {
-    font-size: 1.2rem;
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
   }
+}
 
-  .App-header p {
-    font-size: 0.85rem;
+.App-header {
+  /* background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white; */
+}
+
+.tooltip {
+  position: absolute;
+  padding: 5px;
+  background-color: rgb(141, 16, 16);
+  border: 1px solid black;
+  border-radius: 5px;
+  pointer-events: none;
+  opacity: 1;
+}
+.axis-label {
+  font-size: 2.5em;
+  fill: #635F5D;
+}
+.App-link {
+  color: #61dafb;
+}
+.slider {
+  position: relative;
+  width: 100%;
+  height: 0;
+  margin: 0 auto;
+  padding-top: 10px;
+}
+
+.track {
+  fill: none;
+  stroke: #643939;
+  stroke-width: 20;
+  stroke-linecap: round;
+}
+
+.track-inset {
+  fill: none;
+  stroke: #181818;
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.handle {
+  /* fill: #fff; */
+  stroke: #15590b;
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.track-overlay {
+  /* fill: none; */
+  pointer-events: all;
+}
+
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
   }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Global dark theme */
+body {
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%);
+  color: #ffffff;
+  font-family: 'Arial', sans-serif;
+}
+
+html {
+  background: linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(26,26,26,0.9) 50%, rgba(51,51,51,0.85) 100%);
 }

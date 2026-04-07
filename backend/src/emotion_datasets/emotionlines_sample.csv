@@ -1,0 +1,11 @@
+text,emotion,speaker
+"Hey, how's your new AI project going?",anticipation,A
+It's going great! I'm really excited about the results,joy,B
+That's wonderful! What's the most challenging part?,positive,A
+The data preprocessing is quite complex,anticipation,B
+"I understand, that can be frustrating",sadness,A
+"Yes, but I'm learning a lot from it",positive,B
+That's the right attitude! Keep it up,positive,A
+Thanks for the encouragement!,joy,B
+No problem! Let me know if you need help,trust,A
+"I will, thank you so much!",joy,B

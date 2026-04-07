@@ -1,111 +1,23 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-.env
-venv/
-ENV/
-backend/realtime/
+# Exclude local docs and thesis materials from Git
+/Docs/
+/Thesis_Template_for_Naisarg/
 
-# Node.js
+# Node and build artifacts
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.next
-.nuxt
-.vuepress/dist
+frontend/build/
+client/node_modules/
+client/build/
 
-# IDEs and editors
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# Python caches and venvs
+__pycache__/
+*.pyc
+backend/realtime/
 
 # Logs
 logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+backend/src/logs/
+backend/src/*.log
 
-# Database
-*.sqlite
-*.sqlite3
-*.db
-
-# Kafka & Zookeeper
-kafka-logs/
-zookeeper-data/
-
-# Docker
-.docker/
-docker-compose.override.yml
-
-# Testing
-coverage/
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Misc
+# OS files
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.pem
 .env
-.env.*
-!.env.example

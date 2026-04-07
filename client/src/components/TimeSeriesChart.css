@@ -1,0 +1,63 @@
+.x-axis-label {
+  font-size: 11px;
+  /* Adjust font size */
+  fill: black;
+  /* Set the text color */
+  margin-top: 5px;
+
+}
+
+.state-dropdown {
+  width: 200px;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+  cursor: pointer;
+  appearance: none;
+  /* Remove default arrow */
+  -webkit-appearance: none;
+  /* Remove default arrow in Safari */
+  position: relative;
+}
+
+.state-dropdown::after {
+  content: '▼';
+  /* Custom arrow */
+  font-size: 10px;
+  color: #333;
+  position: absolute;
+  right: 10px;
+  top: 12px;
+  pointer-events: none;
+}
+
+.tabs {
+  margin: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.tab-button {
+  padding: 10px 20px;
+  cursor: pointer;
+  background-color: #f1f1f1;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.tab-button.active {
+  background-color: #007bff;
+  color: white;
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tab-content.active {
+  display: block;
+}
