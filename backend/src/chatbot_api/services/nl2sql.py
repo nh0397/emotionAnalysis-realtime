@@ -40,6 +40,7 @@ Now convert this question to SQL:
 
 # Import schema from config
 from ..schema_config import get_schema_context
+from .ollama_service import generate_sql_ollama
 from .gemini import generate_sql_gemini
 
 # Module-level notice flag to inform callers about provider conditions
@@ -76,6 +77,19 @@ def generate_sql(question: str, model: str = None) -> Optional[str]:
         except Exception:
             pass
 
+        if NL2SQL_PROVIDER == "OLLAMA":
+            print(f"[nl2sql] Calling Ollama service (Model: {model})...")
+            sql = generate_sql_ollama(
+                base_url=OLLAMA_BASE_URL,
+                model=model,
+                question=question,
+                system_prompt=system_prompt,
+                schema_context=schema_context,
+                guardrails=guardrails,
+                timeout=OLLAMA_TIMEOUT
+            )
+            return sql # Service handles cleaning
+            
         if NL2SQL_PROVIDER == "GEMINI":
             sql = generate_sql_gemini(
                 api_key=GEMINI_API_KEY,
@@ -92,53 +106,26 @@ def generate_sql(question: str, model: str = None) -> Optional[str]:
                 global LAST_NOTICE
                 if GEMINI_API_KEY:
                     LAST_NOTICE = LAST_NOTICE or 'gemini_fallback'
-                NL2SQL_provider_fallback = True
+                # Fall through to Ollama fallback below (lines 120+) logic needs check
+                # Actually legacy logic had `else` for Ollama.
+                # I will implement simplified fallback here or just return None and let simple Ollama path run?
+                # The original code had `else` block.
+                # I will allow it to fall to Ollama by returning only if sql found?
             else:
-                NL2SQL_provider_fallback = False
-        else:
-            payload = {
-                "model": model,
-                "prompt": full_prompt,
-                "stream": False,
-                "options": {
-                    "temperature": OLLAMA_TEMP_SQL_GENERATION,
-                    "top_p": 0.9,
-                    "stop": [";", "\n\n"]
-                }
-            }
-            response = requests.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json=payload,
-                timeout=OLLAMA_TIMEOUT
-            )
-            if response.status_code != 200:
-                print(f"[nl2sql.py:109] Ollama error: {response.status_code} - {response.text}")
-                return None
-            result = response.json()
-            sql = result.get("response", "").strip()
+                 return sql
 
-        # If Gemini path failed, optionally try Ollama fallback
-        if NL2SQL_PROVIDER == "GEMINI" and (not sql):
-            payload = {
-                "model": model,
-                "prompt": full_prompt,
-                "stream": False,
-                "options": {
-                    "temperature": OLLAMA_TEMP_SQL_GENERATION,
-                    "top_p": 0.9,
-                    "stop": [";", "\n\n"]
-                }
-            }
-            response = requests.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json=payload,
-                timeout=OLLAMA_TIMEOUT
-            )
-            if response.status_code != 200:
-                print(f"[nl2sql.py:fallback] Ollama error: {response.status_code} - {response.text}")
-                return None
-            result = response.json()
-            sql = result.get("response", "").strip()
+        # Use Ollama (Default or Fallback)
+        print(f"[nl2sql] Using Ollama (Model: {model})...")
+        sql = generate_sql_ollama(
+            base_url=OLLAMA_BASE_URL,
+            model=model,
+            question=question,
+            system_prompt=system_prompt,
+            schema_context=schema_context,
+            guardrails=guardrails,
+            timeout=OLLAMA_TIMEOUT
+        )
+        return sql
         
         # Clean up the SQL
         sql = sql.replace("```sql", "").replace("```", "").strip()

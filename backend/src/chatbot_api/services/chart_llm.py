@@ -12,6 +12,7 @@ from ..config import (
     CHART_PROVIDER, GEMINI_API_KEY, GEMINI_MODEL_CHART, GEMINI_TIMEOUT, GEMINI_ENABLE_FALLBACK,
     CHART_GENERATION_MODE
 )
+from .ollama_service import generate_chart_ollama
 from .gemini import generate_chart_gemini
 
 
@@ -133,59 +134,35 @@ CODE REQUIREMENTS:
 
     # Try Gemini first if configured
     if CHART_PROVIDER == "GEMINI":
+        print(f"[chart_llm] Calling Gemini ({GEMINI_MODEL_CHART})...")
         result = generate_chart_gemini(
             api_key=GEMINI_API_KEY,
             model=GEMINI_MODEL_CHART,
             prompt=prompt,
             timeout=GEMINI_TIMEOUT,
-            generate_code=False # We handle JSON parsing here
+            generate_code=False
         )
-        if result and isinstance(result, dict):
-             # Ensure code is present
-            if 'code' not in result:
-                 # Fallback to simple generation if code missing
-                 pass
-            else:
-                return result
+        if result:
+            return result
 
-    # Use Ollama
-    try:
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL_CHART,
-                "prompt": prompt,
-                "stream": False,
-                "format": "json", # Force JSON mode
-                "options": {
-                    "temperature": 0.2,
-                    "num_predict": 1500 # Need more tokens for code
-                }
-            },
-            timeout=OLLAMA_TIMEOUT
-        )
+    # Use Ollama via Service
+    print(f"[chart_llm] Calling Ollama service (Model: {OLLAMA_MODEL_CHART})...")
+    result = generate_chart_ollama(
+        base_url=OLLAMA_BASE_URL,
+        model=OLLAMA_MODEL_CHART,
+        prompt=prompt,
+        timeout=120
+    )
+    
+    if result:
+        print(f"[chart_llm] Received result: {result.keys()}")
+        return {
+            'chart_type': result.get('chart_type'),
+            'chart_config': result.get('chart_config', {}),
+            'reasoning': result.get('reasoning', f"Ollama suggested {result.get('chart_type')}"),
+            'code': result.get('code', '')
+        }
         
-        if response.status_code == 200:
-            result = response.json()
-            raw_response = result.get("response", "").strip()
-            
-            try:
-                # Parse JSON
-                chart_data = json.loads(raw_response)
-                
-                # Validate fields
-                if 'chart_type' in chart_data:
-                    return {
-                        'chart_type': chart_data.get('chart_type'),
-                        'chart_config': chart_data.get('chart_config', {}),
-                        'reasoning': chart_data.get('reasoning', 'AI suggested this chart.'),
-                        'code': chart_data.get('code', '')
-                    }
-            except json.JSONDecodeError:
-                print(f"[chart_llm.py] JSON parse failed: {raw_response[:100]}...")
-                
-    except Exception as e:
-        print(f"[chart_llm.py] Error: {e}")
-
+    print(f"[chart_llm] No valid result from Ollama")
     return None
 

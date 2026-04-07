@@ -29,47 +29,76 @@ def generate_nl_response(question: str, sql: str, rows: List[Dict], chart_hint: 
     # Prepare data summary for the LLM
     data_summary = prepare_data_summary(rows, max_rows=5)
     
-    # Use Gemini for fast, natural response
+    # Try Gemini first if configured
+    from ..config import NL2SQL_PROVIDER, GEMINI_API_KEY
+    if NL2SQL_PROVIDER == "GEMINI" and GEMINI_API_KEY:
+        try:
+             model_name = "gemini-1.5-flash" 
+             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+             gemini_prompt = f"You are a helpful data analyst. Answer the user's question in 1 clear, natural English sentence based on the data: {data_summary}. Question: {question}"
+             payload = {"contents": [{"parts": [{"text": gemini_prompt}]}]}
+             print(f"[NL_RESPONSE] Calling Gemini ({model_name})...")
+             response = requests.post(url, json=payload, timeout=5)
+             if response.status_code == 200:
+                 nl_response = response.json().get("candidates", [])[0].get("content", {}).get("parts", [])[0].get("text", "").strip()
+                 if chart_hint: nl_response += f"\n\n(Visualized as {chart_hint.replace('_', ' ')})"
+                 return nl_response
+        except Exception as e:
+             print(f"[NL_RESPONSE] Gemini error: {e}")
+
+    # Use Ollama for natural response
     try:
-        # Use gemini-1.5-flash as it is most stable for v1beta API
-        model_name = "gemini-1.5-flash" 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        from ..config import OLLAMA_BASE_URL, OLLAMA_MODEL_NL_RESPONSE, OLLAMA_TEMP_SMALLTALK
         
-        prompt = f"""You are a helpful data analyst. Explain these query results in 1-2 natural English sentences.
+        print(f"[NL_RESPONSE] 🚀 Generating with Ollama (Model: {OLLAMA_MODEL_NL_RESPONSE})...")
         
+        system_prompt = "You are a helpful data analyst. Explain the query results in 1-2 clear English sentences."
+        
+        user_prompt = f"""
         User Question: "{question}"
         
         Data (top 5 rows):
         {data_summary}
         
-        Rules:
-        - Be concise and direct.
-        - Mention key numbers/trends.
-        - No technical jargon.
-        - No "Here is the data" intros.
+        Task:
+        - Summarize the key finding.
+        - Be specific (mention numbers/names).
+        - Do NOT say "Here is the data".
+        - Example: "Anger levels are highest in California (0.24)."
         """
         
+        url = f"{OLLAMA_BASE_URL}/api/chat"
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}]
+            "model": OLLAMA_MODEL_NL_RESPONSE,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "stream": False,
+            "options": {
+                "temperature": OLLAMA_TEMP_SMALLTALK
+            }
         }
         
-        print(f"[nl_response] Calling Gemini ({model_name})...")
-        response = requests.post(url, json=payload, timeout=5)
+        print(f"[NL_RESPONSE] Sending request to {url}...")
+        resp = requests.post(url, json=payload, timeout=20) # Can take longer locally
         
-        if response.status_code == 200:
-            data = response.json()
-            candidates = data.get("candidates", [])
-            if candidates:
-                nl_response = candidates[0].get("content", {}).get("parts", [])[0].get("text", "").strip()
+        if resp.status_code == 200:
+            result = resp.json()
+            # Ollama chat response structure
+            content = result.get("message", {}).get("content", "").strip()
+            
+            if content:
+                print(f"[NL_RESPONSE] ✅ Received response: {content[:50]}...")
                 if chart_hint:
-                     nl_response += f"\n\n(Visualized as {chart_hint.replace('_', ' ')})"
-                return nl_response
+                     content += f"\n\n(Visualized as {chart_hint.replace('_', ' ')})"
+                return content
         
-        print(f"[nl_response] Gemini API failed: {response.status_code} - {response.text}")
+        print(f"[NL_RESPONSE] ❌ Ollama failed: {resp.status_code} - {resp.text[:100]}")
         return fallback_response(rows, question)
 
     except Exception as e:
-        print(f"[nl_response] Gemini CRASH: {e}")
+        print(f"[NL_RESPONSE] ❌ Exception: {e}")
         return fallback_response(rows, question)
     
     # Build the prompt
@@ -210,9 +239,17 @@ def fallback_response(rows: List[Dict], question: str) -> str:
                     state = r.get('state_name', r.get('state_code', 'Unknown'))
                     val = r.get(metric, 0)
                     summary.append(f"{state} ({val:.2f})")
-                
                 return f"Here is the data for {', '.join(summary)}. See the chart for the full comparison."
             
+            # Time Series: "The trend ranges from 0.12 to 0.45..."
+            date_col = next((c for c in first_row.keys() if 'date' in c.lower() or 'time' in c.lower()), None)
+            if date_col and numeric_cols:
+                metric = numeric_cols[0]
+                vals = [r.get(metric, 0) for r in rows if r.get(metric) is not None]
+                if vals:
+                    min_val, max_val = min(vals), max(vals)
+                    return f"Over this period, {metric.replace('_', ' ')} ranged from {min_val:.2f} to {max_val:.2f}."
+
             return f"I found {row_count} records. The top result is {list(first_row.values())[0]}."
 
         # Single row result

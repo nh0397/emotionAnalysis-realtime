@@ -174,12 +174,15 @@ Generate ONLY valid PostgreSQL SQL (no explanations, no markdown, no code blocks
             # Try Gemini first if configured, with fallback to Ollama
             sql = None
             if NL2SQL_PROVIDER == "GEMINI" and GEMINI_API_KEY:
+                print(f"[SQL_GEN] Calling Gemini ({GEMINI_MODEL_NL2SQL})...")
                 sql = _generate_with_gemini(prompt)
                 # If Gemini fails and fallback enabled, try Ollama
                 if not sql and GEMINI_ENABLE_FALLBACK:
                     print(f"[langchain_chain.py] Gemini failed on attempt {attempt + 1}, falling back to Ollama...")
                     sql = _generate_with_ollama(prompt)
             else:
+                # Force Ollama Usage
+                print(f"[SQL_GEN] Calling Ollama ({OLLAMA_MODEL_NL2SQL})...")
                 sql = _generate_with_ollama(prompt)
             
             if not sql:
@@ -225,8 +228,14 @@ Generate ONLY valid PostgreSQL SQL (no explanations, no markdown, no code blocks
     return None
 
 
+
+
+
+
+
+
 def _generate_with_ollama(prompt: str) -> Optional[str]:
-    """Generate SQL using Ollama with enhanced cleaning"""
+    """Generate SQL using Ollama (Handling complex prompts internally)"""
     try:
         response = requests.post(
             f"{OLLAMA_BASE_URL}/api/generate",
@@ -240,18 +249,13 @@ def _generate_with_ollama(prompt: str) -> Optional[str]:
         )
         if response.status_code == 200:
             sql = response.json().get("response", "").strip()
-            
-            # Enhanced cleaning
+            # Cleaning
             sql = sql.replace("```sql", "").replace("```", "").strip()
-            # Remove any leading/trailing whitespace and newlines
-            sql = "\n".join([line.strip() for line in sql.split("\n") if line.strip()])
-            # Remove any explanation text before SQL
             if "SELECT" in sql.upper():
                 sql = sql[sql.upper().find("SELECT"):]
             if sql and not sql.endswith(";"):
                 sql += ";"
-            
-            return sql if sql else None
+            return sql
     except Exception as e:
         print(f"[langchain_chain.py] Ollama error: {e}")
     return None
@@ -303,7 +307,6 @@ def run_analytics_pipeline(
     from chatbot_api.services.context_handler import detect_contextual_followup, should_return_previous_results
     from chatbot_api.services.validator import validate_sql, add_limit_if_missing, ensure_group_by
     from chatbot_api.services.db import run_sql
-    from chatbot_api.services.chart_hints import infer_chart_type
     from chatbot_api.services.chart_llm import suggest_chart_with_llm
     from chatbot_api.services.nl_response import generate_nl_response
     from chatbot_api.config import MAX_SQL_LIMIT, SQL_TIMEOUT
@@ -428,18 +431,23 @@ def run_analytics_pipeline(
         }
     print(f"[PIPELINE] ✓ Data fetched: {len(rows)} rows")
     
-    # 🎨 STEP 6: Chart Selection (HEURISTIC ONLY - FAST)
-    print(f"[PIPELINE] 🎨 STEP 6: Chart Selection (using heuristic)")
+    # 🎨 STEP 6: Chart Selection (LLM - INTELLIGENT)
+    print(f"[PIPELINE] 🎨 STEP 6: Chart Selection (using LLM)")
     
-    chart_hint = infer_chart_type(sql, rows, question)
-    if isinstance(chart_hint, dict):
-        chart_hint = chart_hint.get('chart_type')
+    chart_response = suggest_chart_with_llm(sql, rows, question)
     
-    chart_config = None
+    chart_hint = None
     chart_reasoning = None
+    chart_config = None
     chart_code = None
     
-    print(f"[PIPELINE] ✓ Chart selected: {chart_hint}")
+    if chart_response:
+        chart_hint = chart_response.get('chart_type')
+        chart_reasoning = chart_response.get('reasoning')
+        # Store full response as config for potential advanced frontend usage
+        chart_config = chart_response
+    
+    print(f"[PIPELINE] ✓ Chart selected: {chart_hint} (Reasoning: {str(chart_reasoning)[:50]}...)")
     
     # Step 7: Generate NL Response
     print(f"[PIPELINE] 💬 STEP 7: Generate NL Response (chart_hint={chart_hint})")

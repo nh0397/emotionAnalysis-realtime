@@ -33,7 +33,7 @@ OLLAMA_TEMP_SMALLTALK = 0.7      # Higher for natural conversation
 NL2SQL_PROVIDER = os.getenv("NL2SQL_PROVIDER", "OLLAMA").upper()
 
 # Chart Selection Provider ("OLLAMA" or "GEMINI")
-CHART_PROVIDER = os.getenv("CHART_PROVIDER", "GEMINI").upper()  # Default to Gemini for better accuracy
+CHART_PROVIDER = os.getenv("CHART_PROVIDER", "OLLAMA").upper()
 
 # Chart Generation Mode ("json" or "code")
 # - "json": Returns chart_type, suggest_filters, filter_types (default, safe)

@@ -831,7 +831,7 @@ try:
     from chatbot_api.services.nl2sql import generate_sql, get_last_notice
     from chatbot_api.services.validator import validate_sql, add_limit_if_missing, ensure_group_by
     from chatbot_api.services.db import run_sql, check_explain_cost
-    from chatbot_api.services.chart_hints import infer_chart_type
+    
     from chatbot_api.services.intent_classifier import classify_intent_smart
     from chatbot_api.services.nl_response import generate_nl_response
     from chatbot_api.config import (
@@ -1156,7 +1156,9 @@ def handle_data_query(question, context_info, use_langchain: bool = True):
             if is_valid:
                 rows, exec_error = run_sql(sql, timeout=SQL_TIMEOUT)
                 if not exec_error:
-                    chart_hint = infer_chart_type(sql, rows, question)
+                    from chatbot_api.services.chart_llm import suggest_chart_with_llm
+                    chart_response = suggest_chart_with_llm(sql, rows, question)
+                    chart_hint = chart_response.get('chart_type') if chart_response else None
                     current_page = context_info.get('current_page')
                     nl_message = generate_nl_response(
                         f"Complete data for: {context['previous_question']}", 
