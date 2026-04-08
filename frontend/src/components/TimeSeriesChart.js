@@ -177,15 +177,10 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
       const diffExtent = d3.extent(diffSeries, d => d.diff);
       const diffMin = diffExtent[0] || 0;
       const diffMax = diffExtent[1] || 0;
-      // Find the maximum absolute difference to ensure symmetry
+      // Dynamic Y-domain based strictly on data extent with 10% padding
       const maxAbsDiff = Math.max(Math.abs(diffMin), Math.abs(diffMax));
-      
-      // Round up to nearest 0.2 increment, with a minimum of 0.2
-      const increment = 0.2;
-      const roundedMax = Math.ceil(maxAbsDiff / increment) * increment;
-      // Always symmetric: if max is 0.4, domain is [-0.4, 0.4]
-      const yDomainMax = Math.max(0.2, roundedMax);
-      const yDomainMin = -yDomainMax; // Always equal and opposite
+      const yDomainMax = maxAbsDiff === 0 ? 0.1 : maxAbsDiff * 1.1;
+      const yDomainMin = -yDomainMax;
   
       const reducedHeight = Math.max(220, Math.round(height / 2)); // Taller diff chart for visibility
   
@@ -196,8 +191,16 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .attr("class", "tooltip")
         .style("opacity", 0);
   
+      const timeExtent = d3.extent(diffSeries, (d) => new Date(d.date));
+      // If only one data point, expand domain by 5 minutes for visibility
+      if (timeExtent[0] && timeExtent[0].getTime() === timeExtent[1].getTime()) {
+        const d = timeExtent[0];
+        timeExtent[0] = new Date(d.getTime() - 2.5 * 60000);
+        timeExtent[1] = new Date(d.getTime() + 2.5 * 60000);
+      }
+
       const xScale = d3.scaleTime()
-        .domain(d3.extent(diffSeries, (d) => new Date(d.date)))
+        .domain(timeExtent)
         .range([0, width]);
   
       const yScale = d3.scaleLinear()
@@ -207,13 +210,9 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
       const chartGroup = svg.append("g")
         .attr("transform", `translate(${margin.left}, ${margin.top})`);
   
-      // Generate ticks in increments of 0.2
-      const yAxisTicks = [];
-      for (let i = yDomainMin; i <= yDomainMax; i += increment) {
-        yAxisTicks.push(Math.round(i * 100) / 100); // Round to 2 decimal places
-      }
+      // Let D3 handle ticks automatically for a cleaner focus on data
       chartGroup.append("g")
-        .call(d3.axisLeft(yScale).tickValues(yAxisTicks).tickFormat((d) => d.toFixed(2)))
+        .call(d3.axisLeft(yScale).ticks(5))
         .style("z-index", 10)
         .selectAll("text")
         .style("font-size", "12px")
@@ -225,7 +224,7 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .attr("class", "grid")
         .call(
           d3.axisLeft(yScale)
-            .tickValues(yAxisTicks)
+            .ticks(5)
             .tickSize(-width)
             .tickFormat("")
         )
@@ -260,7 +259,7 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
       // Append X-Axis
       chartGroup.append("g")
         .attr("transform", `translate(0, ${reducedHeight})`)
-        .call(d3.axisBottom(xScale).ticks(d3.timeMonth.every(1)).tickFormat(d3.timeFormat("%Y-%m")))
+        .call(d3.axisBottom(xScale).ticks(5).tickFormat(d3.timeFormat("%H:%M")))
         .selectAll("text")
         .attr("dx", "0.5em")
         .attr("dy", "0.5em")
@@ -317,8 +316,9 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .domain(d3.extent(chartData, d => new Date(d.date)))
         .range([0, width]);
 
+      const yDomainMax = d3.max(chartData, d => isTab1 ? d[item] : d[selectedEmotion]) || 0.1;
       const yScale = d3.scaleLinear()
-        .domain([0, 0.2])
+        .domain([0, yDomainMax * 1.1]) // Dynamic Y-axis based on data
         .range([rowHeight, 0]);
 
       const chartGroup = svg.append("g")
@@ -327,7 +327,7 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
       // X-Axis
       chartGroup.append("g")
         .attr("transform", `translate(0, ${rowHeight})`)
-        .call(d3.axisBottom(xScale).ticks(d3.timeMonth.every(1)).tickFormat(d3.timeFormat("%Y-%m")))
+        .call(d3.axisBottom(xScale).ticks(5).tickFormat(d3.timeFormat("%H:%M")))
         .selectAll("text")
         .attr("dx", "0.5em")
         .attr("dy", "0.5em")
@@ -336,13 +336,13 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
         .style("font-size", "8px")
         .style("fill", "#ffffff")
 
-      // Y-Axis
-      chartGroup.append("g")
-        .call(d3.axisLeft(yScale).tickValues([0, 0.1, 0.2]).tickFormat(d => d.toFixed(1)))
-        .selectAll("text")
-        .style("font-size", "8px")
-        .style("fill", "#ffffff")
-        .style("z-index", "2");
+        // Y-Axis
+        chartGroup.append("g")
+          .call(d3.axisLeft(yScale).ticks(3))
+          .selectAll("text")
+          .style("font-size", "8px")
+          .style("fill", "#ffffff")
+          .style("z-index", "2");
 
       // Horizon chart layers
       bandColors.forEach((color, i) => {
@@ -351,8 +351,8 @@ const TimeSeriesChart = ({ dimensions, data, states, selectedState }) => {
           .attr("fill", color)
           .attr("d", d3.area()
             .x(d => xScale(new Date(d.date)))
-            .y0(d => yScale(Math.min(0.2, Math.max(0, (isTab1 ? d[item] : d[selectedEmotion]) - (i + 1) * 0.2))))
-            .y1(d => yScale(Math.min(0.2, Math.max(0, (isTab1 ? d[item] : d[selectedEmotion]) - i * 0.2))))
+            .y0(d => yScale(Math.min(yDomainMax, Math.max(0, (isTab1 ? d[item] : d[selectedEmotion]) - (i + 1) * (yDomainMax / 5)))))
+            .y1(d => yScale(Math.min(yDomainMax, Math.max(0, (isTab1 ? d[item] : d[selectedEmotion]) - i * (yDomainMax / 5)))))
             .curve(d3.curveMonotoneX)
           )
           .on("mouseover", (event, d) => {

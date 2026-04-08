@@ -30,7 +30,7 @@ class TweetGenerator:
             nlp_load_time = time.time() - start_time
             logger.system_event("NLP_PIPELINE_LOADED", f"Load time: {nlp_load_time:.2f}s")
         except Exception as e:
-            logger.error(f"Failed to initialize NLP pipeline: {e}")
+            logger.error("TWEET_GENERATOR", f"Failed to initialize NLP pipeline: {e}")
             raise
         
         # Initialize Kafka producer
@@ -41,7 +41,7 @@ class TweetGenerator:
             )
             logger.system_event("KAFKA_CONNECTED", f"Bootstrap: {bootstrap_servers}")
         except Exception as e:
-            logger.error(f"Failed to connect to Kafka: {e}")
+            logger.error("TWEET_GENERATOR", f"Failed to connect to Kafka: {e}")
             raise
         
         # Test keywords (these would come from UI later)
@@ -101,7 +101,7 @@ class TweetGenerator:
             return tweet_text
                 
         except Exception as e:
-            logger.error(f"Error generating tweet: {e}")
+            logger.error("TWEET_GENERATOR", f"Error generating tweet: {e}")
             return f"Thoughts on {keyword}... 🤔 ({state})"
 
     def generate_and_send_tweet(self, keyword: str = None) -> bool:

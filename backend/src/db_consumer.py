@@ -83,22 +83,24 @@ class DatabaseConsumer:
         return False
 
     def init_database(self):
-        """Initialize PostgreSQL database with tweets table"""
+        """Initialize PostgreSQL database with full schema (tweets, aggregates, triggers)"""
         if not self.wait_for_postgres():
+            logger.error("DB_CONSUMER", "PostgreSQL not ready, exiting.")
             sys.exit(1)
 
         try:
             conn = psycopg2.connect(**self.db_params)
             cursor = conn.cursor()
             
-            # Create tweets table with ALL emotion columns
+            # 1. Create tweets table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS tweets (
                     id SERIAL PRIMARY KEY,
-                    tweet_id INTEGER NOT NULL,
+                    tweet_id BIGINT NOT NULL,
                     username VARCHAR(255) NOT NULL,
                     raw_text TEXT NOT NULL,
                     timestamp TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     state_code CHAR(2) NOT NULL,
                     state_name VARCHAR(255) NOT NULL,
                     context VARCHAR(255) NOT NULL,
@@ -106,10 +108,10 @@ class DatabaseConsumer:
                     retweets INTEGER DEFAULT 0,
                     replies INTEGER DEFAULT 0,
                     views INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    sentiment VARCHAR(10) DEFAULT 'neutral',
+                    sentiment_confidence FLOAT DEFAULT 0.0,
                     anger FLOAT DEFAULT 0.0,
                     fear FLOAT DEFAULT 0.0,
-                    positive FLOAT DEFAULT 0.0,
                     sadness FLOAT DEFAULT 0.0,
                     surprise FLOAT DEFAULT 0.0,
                     joy FLOAT DEFAULT 0.0,
@@ -119,19 +121,104 @@ class DatabaseConsumer:
                     disgust FLOAT DEFAULT 0.0,
                     compound FLOAT DEFAULT 0.0,
                     dominant_emotion VARCHAR(50),
-                    confidence FLOAT DEFAULT 0.0
+                    emotion_confidence FLOAT DEFAULT 0.0
                 )
             ''')
             
-            # Create indexes
+            # 2. Create aggregates table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS emotion_aggregates (
+                    id SERIAL PRIMARY KEY,
+                    state_code CHAR(2) NOT NULL,
+                    state_name VARCHAR(255) NOT NULL,
+                    sentiment_positive_count INTEGER DEFAULT 0,
+                    sentiment_negative_count INTEGER DEFAULT 0,
+                    sentiment_neutral_count INTEGER DEFAULT 0,
+                    sentiment_positive_avg FLOAT DEFAULT 0.0,
+                    sentiment_negative_avg FLOAT DEFAULT 0.0,
+                    sentiment_neutral_avg FLOAT DEFAULT 0.0,
+                    anger_avg FLOAT DEFAULT 0.0,
+                    fear_avg FLOAT DEFAULT 0.0,
+                    sadness_avg FLOAT DEFAULT 0.0,
+                    surprise_avg FLOAT DEFAULT 0.0,
+                    joy_avg FLOAT DEFAULT 0.0,
+                    anticipation_avg FLOAT DEFAULT 0.0,
+                    trust_avg FLOAT DEFAULT 0.0,
+                    disgust_avg FLOAT DEFAULT 0.0,
+                    tweet_count INTEGER DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(state_code)
+                )
+            ''')
+            
+            # 3. Create aggregate update function
+            cursor.execute('''
+                CREATE OR REPLACE FUNCTION update_emotion_aggregates()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    INSERT INTO emotion_aggregates (
+                        state_code, state_name,
+                        sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
+                        sentiment_positive_avg, sentiment_negative_avg, sentiment_neutral_avg,
+                        anger_avg, fear_avg, sadness_avg, surprise_avg, joy_avg, 
+                        anticipation_avg, trust_avg, disgust_avg, tweet_count, last_updated
+                    )
+                    SELECT 
+                        state_code,
+                        state_name,
+                        COUNT(CASE WHEN sentiment = 'positive' THEN 1 END),
+                        COUNT(CASE WHEN sentiment = 'negative' THEN 1 END),
+                        COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END),
+                        AVG(CASE WHEN sentiment = 'positive' THEN sentiment_confidence END),
+                        AVG(CASE WHEN sentiment = 'negative' THEN sentiment_confidence END),
+                        AVG(CASE WHEN sentiment = 'neutral' THEN sentiment_confidence END),
+                        AVG(anger), AVG(fear), AVG(sadness), AVG(surprise), AVG(joy),
+                        AVG(anticipation), AVG(trust), AVG(disgust),
+                        COUNT(*), CURRENT_TIMESTAMP
+                    FROM tweets 
+                    WHERE state_code = NEW.state_code
+                    GROUP BY state_code, state_name
+                    ON CONFLICT (state_code) DO UPDATE SET
+                        sentiment_positive_count = EXCLUDED.sentiment_positive_count,
+                        sentiment_negative_count = EXCLUDED.sentiment_negative_count,
+                        sentiment_neutral_count = EXCLUDED.sentiment_neutral_count,
+                        sentiment_positive_avg = EXCLUDED.sentiment_positive_avg,
+                        sentiment_negative_avg = EXCLUDED.sentiment_negative_avg,
+                        sentiment_neutral_avg = EXCLUDED.sentiment_neutral_avg,
+                        anger_avg = EXCLUDED.anger_avg,
+                        fear_avg = EXCLUDED.fear_avg,
+                        sadness_avg = EXCLUDED.sadness_avg,
+                        surprise_avg = EXCLUDED.surprise_avg,
+                        joy_avg = EXCLUDED.joy_avg,
+                        anticipation_avg = EXCLUDED.anticipation_avg,
+                        trust_avg = EXCLUDED.trust_avg,
+                        disgust_avg = EXCLUDED.disgust_avg,
+                        tweet_count = EXCLUDED.tweet_count,
+                        last_updated = EXCLUDED.last_updated;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            ''')
+            
+            # 4. Create trigger (drop first if exists to avoid errors)
+            cursor.execute('DROP TRIGGER IF EXISTS trigger_update_emotion_aggregates ON tweets')
+            cursor.execute('''
+                CREATE TRIGGER trigger_update_emotion_aggregates
+                AFTER INSERT OR UPDATE OR DELETE ON tweets
+                FOR EACH ROW EXECUTE FUNCTION update_emotion_aggregates();
+            ''')
+            
+            # 5. Create indexes
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tweets_timestamp ON tweets(timestamp)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tweets_state_code ON tweets(state_code)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_tweets_context ON tweets(context)')
             
             conn.commit()
             conn.close()
+            logger.system_event("DB_SCHEMA_INITIALIZED")
             
         except Exception as e:
+            logger.error("DB_CONSUMER", f"Database initialization failed: {e}")
             sys.exit(1)
 
     def store_tweet(self, tweet: Dict[str, Any]):

@@ -575,10 +575,10 @@ def get_state_time_series_data(state_code):
     try:
         cursor = conn.cursor()
         
-        # Get daily emotion averages for the specific state
+        # Get minute-by-minute emotion averages for the specific state
         cursor.execute("""
             SELECT 
-                DATE(timestamp) as date,
+                DATE_TRUNC('minute', timestamp) as minute,
                 AVG(anger) as anger,
                 AVG(fear) as fear,
                 AVG(sadness) as sadness,
@@ -589,15 +589,16 @@ def get_state_time_series_data(state_code):
                 AVG(disgust) as disgust
             FROM tweets 
             WHERE state_code = %s
-            GROUP BY DATE(timestamp)
-            ORDER BY date DESC
+            GROUP BY DATE_TRUNC('minute', timestamp)
+            ORDER BY minute DESC
+            LIMIT 100
         """, (state_code,))
         
         time_series_data = []
         for row in cursor.fetchall():
             time_series_data.append({
                 "state": state_code,
-                "date": row[0].strftime('%Y-%m-%d') if row[0] else None,
+                "date": row[0].isoformat() if row[0] else None,
                 "anger": round(row[1] or 0.0, 3),
                 "fear": round(row[2] or 0.0, 3),
                 "sadness": round(row[3] or 0.0, 3),
@@ -631,16 +632,17 @@ def get_emotion_time_series_data(emotion):
         if emotion not in valid_emotions:
             return jsonify({"error": f"Invalid emotion: {emotion}. Valid emotions: {valid_emotions}"}), 400
         
-        # Get daily emotion data for the specific emotion across all states
+        # Get minute-by-minute emotion data for the specific emotion across all states
         query = f"""
         SELECT 
             state_code,
-            DATE(timestamp) as date,
+            DATE_TRUNC('minute', timestamp) as minute,
             AVG({emotion}) as emotion_value
         FROM tweets 
         WHERE {emotion} IS NOT NULL
-        GROUP BY state_code, DATE(timestamp)
-        ORDER BY state_code, date
+        GROUP BY state_code, DATE_TRUNC('minute', timestamp)
+        ORDER BY state_code, minute DESC
+        LIMIT 500
         """
         
         cursor.execute(query)

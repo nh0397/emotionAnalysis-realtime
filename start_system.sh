@@ -50,6 +50,25 @@ echo "🔧 Creating Kafka topic 'tweets'..."
 docker-compose exec -T kafka kafka-topics --bootstrap-server localhost:9092 --create --topic tweets --partitions 3 --replication-factor 1 --if-not-exists > /dev/null 2>&1
 echo "✅ Kafka topic ready"
 
+# Setup Python Virtual Environment if missing
+if [ ! -d "backend/realtime" ]; then
+    echo "🐍 Creating Python virtual environment..."
+    python3 -m venv backend/realtime
+    source backend/realtime/bin/activate
+    echo "📦 Installing Python dependencies..."
+    pip install -r backend/requirements.txt
+else
+    source backend/realtime/bin/activate
+fi
+
+# Setup Frontend if missing node_modules
+if [ ! -d "frontend/node_modules" ]; then
+    echo "⚛️ Installing Frontend dependencies (npm install)..."
+    cd frontend
+    npm install
+    cd ..
+fi
+
 # Start Python services in background using the virtual environment
 echo "🐍 Starting Python services..."
 
