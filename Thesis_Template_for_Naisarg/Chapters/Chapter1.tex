@@ -1,0 +1,121 @@
+% Chapter 1 - Introduction
+
+\chapter{Introduction}
+
+\label{Chapter1}
+
+%----------------------------------------------------------------------------------------
+
+% Define some commands to keep the formatting separated from the content 
+\newcommand{\keyword}[1]{\textbf{#1}}
+\newcommand{\tabhead}[1]{\textbf{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\file}[1]{\texttt{\bfseries#1}}
+\newcommand{\option}[1]{\texttt{\itshape#1}}
+\setlength{\parindent}{1.5cm} 
+
+%----------------------------------------------------------------------------------------
+
+Social media platforms have transformed how people communicate, share experiences, and express emotions about events happening around them. Every day, millions of posts are created with timestamps, geographic locations, and rich emotional content, creating an unprecedented dataset for understanding how communities experience and react to events across different regions. This vast stream of data presents both opportunities and challenges for researchers, policy makers, and analysts who seek to understand public sentiment and emotional responses in real-time.
+
+This thesis presents TECVis 2.0, a real-time emotion analysis platform that addresses the need for systems capable of processing, analyzing, and visualizing social media emotion data as it arrives. The platform builds upon the foundation established by TECVis~\cite{tecvis2023}, a visual analytics tool developed in 2019 for comparing emotional reactions to events across geographic locations. While TECVis demonstrated the value of combining emotion analysis with visual analytics, the field has evolved significantly since 2019, presenting opportunities to enhance the system with modern technologies and capabilities.
+
+%----------------------------------------------------------------------------------------
+
+\section{Background and Motivation}
+
+Social media platforms generate enormous volumes of data every second. Twitter alone processes hundreds of millions of tweets daily, each containing text, metadata, and implicit emotional signals. This data represents a real-time record of how people feel about events, policies, products, and experiences. The ability to analyze these emotions in real-time has become increasingly valuable across multiple domains.
+
+Policy makers need to understand public reactions to policy announcements quickly, enabling responsive governance. Crisis coordinators require real-time monitoring of emotional responses during emergencies to allocate resources effectively. Researchers study how different communities respond to the same events, revealing cultural and regional patterns. Marketing teams track brand sentiment across regions to inform campaign strategies. All of these use cases benefit from systems that can process emotion data as it arrives, rather than analyzing historical snapshots days or weeks later.
+
+The field of emotion analysis has advanced significantly since 2019. Transformer-based models have demonstrated substantial improvements in accuracy over lexicon-based methods, while streaming architectures enable real-time processing at scale. Generative AI has opened new possibilities for conversational interfaces that make complex analytics accessible to non-technical users. These advances create opportunities to enhance existing systems while preserving their core value propositions.
+
+%----------------------------------------------------------------------------------------
+
+\section{Problem Statement}
+
+The need for real-time emotion analysis of social media data has grown as platforms generate continuous streams of posts containing rich emotional content. Effective analysis requires systems that can process data as it arrives, accurately detect emotions using modern techniques, provide interactive visualizations for exploration, and enable non-technical users to query data through natural language interfaces. Additionally, systems must scale horizontally to handle the millions of posts generated daily.
+
+A review of existing emotion analysis and visualization platforms, detailed in Chapter 2, reveals that while individual systems have made valuable contributions to specific aspects of emotion analysis and visualization, no existing platform provides a unified solution that combines all the capabilities needed for effective real-time emotion analysis of social media data. Specifically, no existing platform simultaneously provides:
+
+\begin{enumerate}
+\item \textbf{Real-time streaming processing.} Existing platforms typically process data in batch mode, which works well for historical analysis but does not support real-time observation of emotional patterns as events unfold. This limitation prevents users from responding to events as they happen, as insights become available only after data collection and processing are complete.
+
+\item \textbf{Modern transformer-based emotion detection.} Existing platforms use lexicon-based methods that were state-of-the-art when developed, achieving approximately 41\% accuracy on benchmark datasets. Modern transformer models can understand context, sarcasm, and nuanced emotional expressions, achieving 84\% accuracy while maintaining reasonable inference speed, but no existing platform has integrated these advances into a complete emotion analysis system.
+
+\item \textbf{Conversational interfaces for data exploration.} Existing platforms require users to interact through predefined visualizations and filters, which works well for users familiar with data visualization but creates barriers for non-technical users. Recent advances in generative AI have created opportunities for conversational interfaces, but no existing emotion analysis platform provides this capability.
+
+\item \textbf{Integrated architecture combining all capabilities.} Individual systems excel in specific areas such as geographic visualization, temporal analysis, or event detection. However, no existing platform combines real-time data processing, modern transformer-based emotion detection, interactive geographic-temporal visualization, and conversational interfaces in a unified architecture.
+
+\item \textbf{Horizontal scalability for high-volume data.} Existing batch processing architectures do not support the horizontal scaling needed to handle the millions of posts generated daily by social media platforms. Streaming architectures that support adding processing components are needed for systems that can grow with data volume.
+\end{enumerate}
+
+The absence of a platform that provides this combination of capabilities motivated the development of TECVis 2.0. This system was created to address the need for a unified platform that combines real-time streaming processing, modern transformer-based emotion detection, interactive geographic-temporal visualization, and conversational interfaces, while building upon the valuable foundation established by TECVis and incorporating insights from related work in visual analytics, as discussed in Chapter 2.
+
+%----------------------------------------------------------------------------------------
+
+\section{Research Objectives}
+
+This thesis aims to develop and evaluate a real-time emotion analysis platform that addresses the challenges identified above. The specific research objectives are:
+
+\begin{enumerate}
+\item \textbf{Design and implement a streaming architecture} that enables real-time processing of social media data, reducing latency from hours or days to milliseconds while maintaining scalability.
+
+\item \textbf{Evaluate and select optimal emotion detection models} that provide significant accuracy improvements over lexicon-based methods while meeting real-time processing requirements.
+
+\item \textbf{Develop a conversational interface} that enables non-technical users to query emotion data using natural language, making complex analytics accessible without requiring database or visualization expertise.
+
+\item \textbf{Integrate modern visualization techniques} that extend existing capabilities while preserving the geographic and temporal comparison features that made TECVis valuable.
+
+\item \textbf{Evaluate system performance} across multiple dimensions including latency, throughput, accuracy, and user experience, demonstrating that the platform achieves its design goals.
+\end{enumerate}
+
+These objectives guide the design, implementation, and evaluation of TECVis 2.0, ensuring that the system addresses real needs while advancing the state of the art in emotion analysis and visual analytics.
+
+%----------------------------------------------------------------------------------------
+
+\section{Contributions}
+
+This thesis makes several contributions to the fields of emotion analysis, visual analytics, and real-time data processing:
+
+\begin{enumerate}
+\item \textbf{Real-time streaming architecture.} TECVis 2.0 implements a Kafka-based streaming pipeline that processes social media data as it arrives, enabling insights within seconds rather than hours or days. This architecture supports horizontal scaling, allowing the system to handle increasing data volumes.
+
+\item \textbf{Improved emotion detection accuracy.} The system replaces lexicon-based methods with transformer models, achieving 84\% accuracy compared to 41\% with previous methods. An evaluation framework demonstrates that DistilRoBERTa-Emotion provides the optimal balance between accuracy and speed for real-time applications.
+
+\item \textbf{Conversational data exploration.} A generative AI chatbot enables users to query emotion data using natural language, translating questions to SQL, executing queries, selecting appropriate visualizations, and generating natural language summaries. This makes complex analytics accessible to non-technical users.
+
+\item \textbf{Enhanced visualization capabilities.} The platform extends TECVis's visualization features with horizon charts for temporal analysis, difference charts for state comparisons, and dynamic chart selection based on query intent.
+
+\item \textbf{Privacy-preserving design.} The chatbot runs on local LLMs (Ollama), keeping all queries and results on the user's machine. This design choice prioritizes privacy while maintaining the benefits of conversational interfaces.
+
+\item \textbf{Comprehensive evaluation framework.} The thesis provides quantitative evaluation of system performance, model accuracy, chatbot effectiveness, and user experience, demonstrating that the platform achieves its design goals.
+\end{enumerate}
+
+These contributions demonstrate that it is possible to modernize existing systems without discarding their core value, while adding new capabilities that address evolving user needs and industry capabilities.
+
+%----------------------------------------------------------------------------------------
+
+\section{Thesis Structure}
+
+This thesis is organized into seven chapters that present the research in a logical progression:
+
+\begin{itemize}
+\item \textbf{Chapter 2: Related Work} reviews existing research in visual analytics, emotion analysis systems, geographic-temporal visualization, real-time processing, and conversational interfaces. This chapter establishes the foundation for understanding how TECVis 2.0 relates to and builds upon previous work.
+
+\item \textbf{Chapter 3: Previous System and Dataset} describes the TECVis system that served as the foundation for this work, including its architecture, data collection methods, and the dataset it processed. This chapter provides context for understanding how TECVis 2.0 enhances the original system.
+
+\item \textbf{Chapter 4: System Architecture} presents TECVis 2.0's architecture, beginning with motivation and contributions, then describing the model selection process, data flow, components, and design decisions that enable real-time processing and scalability.
+
+\item \textbf{Chapter 5: System Description} details the implementation of each component and demonstrates how users interact with the system through screenshots and walkthroughs. This chapter shows the system in action, from data ingestion to visualization rendering.
+
+\item \textbf{Chapter 6: Evaluation} presents performance metrics, user experience evaluation, and comparisons with the previous TECVis system. This chapter demonstrates that TECVis 2.0 achieves its design goals across multiple dimensions.
+
+\item \textbf{Chapter 7: Conclusion and Future Work} summarizes the contributions, reflects on insights gained, and outlines directions for future research and development.
+\end{itemize}
+
+Throughout this thesis, the focus is on making emotion analysis accessible, real-time, and interactive, while building upon the valuable foundation established by TECVis and incorporating modern technologies that address evolving user needs.
+
+%----------------------------------------------------------------------------------------
+
+\let\cleardoublepage\clearpage

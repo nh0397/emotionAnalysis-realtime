@@ -1,0 +1,131 @@
+% Chapter 3 - Previous System and Dataset
+
+\chapter{Previous System and Dataset}
+\label{Chapter3}
+
+%----------------------------------------------------------------------------------------
+
+This chapter describes the TECVis system that served as the foundation for this work, including its architecture, data collection methods, and the dataset it processed.
+
+%----------------------------------------------------------------------------------------
+
+\section{The TECVis System}
+
+TECVis \cite{tecvis2023} was developed between 2019 and 2021 as a visual analytics tool for comparing emotional reactions to events across geographic locations within the United States. The system focused on analyzing COVID-19 related tweets from US states to understand how different regions reacted to pandemic-related announcements and events.
+
+\subsection{Architecture}
+
+Figure~\ref{fig:tecvis_old} shows the original TECVis architecture.
+
+\begin{figure}[htbp]
+\centering
+\includesvg[width=0.95\textwidth]{Figures/Source/tecvis_1.0}
+\caption{TECVis Original Architecture (2019): Batch processing pipeline from Twitter scraping to visualization.}
+\label{fig:tecvis_old}
+\end{figure}
+
+The TECVis pipeline operated in batch mode:
+
+\begin{enumerate}
+\item \textbf{Data collection.} Researchers scraped tweets using the Twitter API, focusing on COVID-19 related keywords such as ``COVID-19,'' ``coronavirus,'' ``pandemic,'' and ``lockdown.'' The collection process gathered tweets with geographic location information, enabling state-level analysis.
+
+\item \textbf{Storage.} Tweets were stored as CSV files containing the original text, timestamp, location information (state codes), and metadata. The system processed these files in batches rather than real-time streams.
+
+\item \textbf{Preprocessing.} Scripts cleaned the text, removing URLs, normalizing characters, handling special cases, and filtering out retweets or duplicate content. This preprocessing step prepared the text for emotion analysis.
+
+\item \textbf{Emotion analysis.} Each tweet was processed through two emotion classifiers:
+\begin{itemize}
+\item \textbf{NRC Emotion Lexicon} \cite{mohammad2013nrc}: Maps words to eight emotions (anger, fear, anticipation, trust, surprise, sadness, joy, disgust) based on Plutchik's wheel of emotions. The lexicon-based approach counts emotion-associated words in each tweet and assigns scores accordingly.
+\item \textbf{VADER} \cite{hutto2014vader}: Provides sentiment scores ranging from -1 (negative) to +1 (positive), specifically designed for social media text. VADER handles slang, emoticons, and punctuation-based emphasis that are common in Twitter posts.
+\end{itemize}
+
+These lexicon-based methods were state-of-the-art for social media emotion analysis in 2019, offering fast processing and interpretable results without requiring training data or computational resources.
+
+\item \textbf{Data storage.} Results were stored as another CSV file with emotion scores and sentiment classifications. The aggregated data included state-level averages for each emotion category, enabling geographic comparison.
+
+\item \textbf{Visualization.} A React frontend with D3.js visualizations fetched data from a Node.js API and displayed it in interactive dashboards. The visualization layer provided the dot plot and tornado chart views that enabled users to explore emotional patterns across states.
+\end{enumerate}
+
+\subsection{Visualization Features}
+
+TECVis provided two main visualization types:
+
+\begin{itemize}
+\item \textbf{Dot Plot.} Showed emotion scores across all US states. Each dot represented a state's average score for a specific emotion, enabling geographic comparison. Users could filter by emotion type and observe which states showed higher or lower scores for specific emotions.
+
+\item \textbf{Tornado Chart.} Compared two states side-by-side, with bars extending left and right from a center axis to show which state scored higher on each emotion. This visualization made it easy to identify differences in emotional responses between states.
+\end{itemize}
+
+\subsection{Strengths of TECVis}
+
+TECVis demonstrated several valuable contributions:
+
+\begin{itemize}
+\item \textbf{Geographic comparison.} The system effectively visualized how different states reacted to the same events, revealing regional patterns in emotional responses to COVID-19 related news and announcements.
+
+\item \textbf{Temporal tracking.} Users could observe how emotions evolved over time, though the batch processing meant updates were periodic rather than real-time. The system processed data in weekly or monthly batches.
+
+\item \textbf{Simplicity.} The architecture was straightforward, making it easy to understand and reproduce. The lexicon-based emotion detection required no model training or fine-tuning.
+
+\item \textbf{Low computational cost.} Lexicon-based methods required minimal computational resources, allowing the system to process large datasets on standard hardware without GPU acceleration.
+\end{itemize}
+
+The system successfully processed 574,806 tweets related to COVID-19, providing researchers with insights into how different regions responded to pandemic-related events.
+
+%----------------------------------------------------------------------------------------
+
+\section{The TECVis Dataset}
+
+The TECVis system processed a dataset of 574,806 tweets collected during the COVID-19 pandemic, focusing exclusively on data from the United States. This dataset served as the foundation for understanding how different US states reacted to pandemic-related events.
+
+\subsection{Data Collection}
+
+Tweets were collected using the Twitter API, focusing on COVID-19 related keywords:
+\begin{itemize}
+\item Primary keywords: ``COVID-19,'' ``coronavirus,'' ``pandemic,'' ``lockdown''
+\item Collection period: 2019-2021 (during the height of the COVID-19 pandemic)
+\item Geographic focus: United States, with state-level location information
+\item Language: English-language tweets
+\end{itemize}
+
+\subsection{Data Characteristics}
+
+The TECVis dataset had several characteristics that influenced the system design:
+
+\begin{itemize}
+\item \textbf{Event-driven content.} Tweets focused on COVID-19 related events, announcements, and news, creating a coherent thematic dataset for analysis.
+
+\item \textbf{Geographic distribution.} Tweets included state-level location information, enabling the geographic comparison features that were central to TECVis's value proposition.
+
+\item \textbf{Temporal span.} The dataset covered multiple months during the pandemic, allowing researchers to observe how emotional responses evolved as the situation changed.
+
+\item \textbf{Informal language.} Like all social media data, the tweets contained slang, abbreviations, and informal grammar, which the lexicon-based methods (NRC and VADER) were designed to handle.
+
+\item \textbf{High volume.} With over 574,000 tweets, the dataset was large enough to provide statistically meaningful state-level aggregations while remaining manageable for batch processing.
+\end{itemize}
+
+\subsection{Characteristics of Lexicon-Based Methods}
+
+TECVis successfully processed this dataset using lexicon-based emotion detection methods (NRC and VADER). These methods have specific characteristics that influenced the system design:
+
+\begin{itemize}
+\item \textbf{Word-level analysis.} Lexicon methods treat words as independent tokens, which works well for straightforward emotional expressions but may miss contextual nuances that require understanding sentence structure and meaning.
+
+\item \textbf{Static vocabulary.} The emotion lexicons use fixed word lists, which work well for established terminology and may require updates for new slang or emerging language patterns.
+
+\item \textbf{Direct word mapping.} Words are mapped directly to emotions, providing interpretable results that are easy to understand and verify.
+
+\item \textbf{Rule-based processing.} Lexicon methods use predefined rules rather than learning from data, which provides consistent results and requires no training data.
+\end{itemize}
+
+As transformer-based models became available, opportunities emerged to enhance emotion detection with models that can understand context and learn from data. TECVis 2.0 incorporates these advances while preserving the interpretability and efficiency that made lexicon-based methods valuable for the original system.
+
+%----------------------------------------------------------------------------------------
+
+\section{Summary}
+
+This chapter has described the TECVis system that provided the foundation for this work. TECVis demonstrated the value of combining emotion analysis with visual analytics for geographic and temporal comparison, successfully processing over 574,000 COVID-19 related tweets using lexicon-based methods (NRC Emotion Lexicon and VADER) that were state-of-the-art in 2019. The system's batch processing architecture and visualization features provided valuable insights into regional emotional responses to pandemic events.
+
+As the field advanced, opportunities emerged to enhance lexicon-based methods with transformer models that can understand context and learn from data. The next chapter describes the architecture of TECVis 2.0, which incorporates modern transformer-based emotion detection and real-time processing capabilities.
+
+%----------------------------------------------------------------------------------------

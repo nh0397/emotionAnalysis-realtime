@@ -1,0 +1,113 @@
+\babel@toc {english}{}\relax 
+\contentsline {chapter}{Declaration of Authorship}{ii}{section*.1}%
+\contentsline {chapter}{Acknowledgements}{iii}{section*.2}%
+\contentsline {chapter}{Abstract}{iv}{section*.3}%
+\contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.6}%
+\contentsline {section}{\numberline {1.1}Background and Motivation}{1}{section.7}%
+\contentsline {section}{\numberline {1.2}Problem Statement}{2}{section.8}%
+\contentsline {section}{\numberline {1.3}Research Objectives}{4}{section.14}%
+\contentsline {section}{\numberline {1.4}Contributions}{5}{section.20}%
+\contentsline {section}{\numberline {1.5}Thesis Structure}{6}{section.27}%
+\contentsline {chapter}{\numberline {2}Related Work}{8}{chapter.28}%
+\contentsline {section}{\numberline {2.1}Visual Analytics Foundations}{8}{section.29}%
+\contentsline {section}{\numberline {2.2}Social Media Sentiment and Emotion Visualization Systems}{8}{section.30}%
+\contentsline {subsection}{\numberline {2.2.1}OpinionSeer}{9}{subsection.31}%
+\contentsline {subsection}{\numberline {2.2.2}TwitInfo}{9}{subsection.33}%
+\contentsline {subsection}{\numberline {2.2.3}EmoViz}{10}{subsection.35}%
+\contentsline {section}{\numberline {2.3}Emotion Analysis in Social Media}{10}{section.37}%
+\contentsline {subsection}{\numberline {2.3.1}Lexicon-Based Approaches}{11}{subsection.38}%
+\contentsline {subsection}{\numberline {2.3.2}Neural Network Approaches}{11}{subsection.39}%
+\contentsline {subsection}{\numberline {2.3.3}Transformer-Based Approaches}{11}{subsection.40}%
+\contentsline {subsection}{\numberline {2.3.4}Evaluation of Emotion Models}{11}{subsection.41}%
+\contentsline {section}{\numberline {2.4}Geographic and Temporal Visualization}{12}{section.42}%
+\contentsline {subsection}{\numberline {2.4.1}Geographic Visualization Systems}{12}{subsection.43}%
+\contentsline {subsection}{\numberline {2.4.2}Temporal Visualization Techniques}{13}{subsection.45}%
+\contentsline {section}{\numberline {2.5}Real-Time Data Processing}{13}{section.46}%
+\contentsline {section}{\numberline {2.6}Conversational Interfaces for Data Exploration}{14}{section.47}%
+\contentsline {section}{\numberline {2.7}Summary}{14}{section.48}%
+\contentsline {chapter}{\numberline {3}Previous System and Dataset}{16}{chapter.49}%
+\contentsline {section}{\numberline {3.1}The TECVis System}{16}{section.50}%
+\contentsline {subsection}{\numberline {3.1.1}Architecture}{16}{subsection.51}%
+\contentsline {subsection}{\numberline {3.1.2}Visualization Features}{17}{subsection.59}%
+\contentsline {subsection}{\numberline {3.1.3}Strengths of TECVis}{18}{subsection.60}%
+\contentsline {section}{\numberline {3.2}The TECVis Dataset}{19}{section.61}%
+\contentsline {subsection}{\numberline {3.2.1}Data Collection}{19}{subsection.62}%
+\contentsline {subsection}{\numberline {3.2.2}Data Characteristics}{19}{subsection.63}%
+\contentsline {subsection}{\numberline {3.2.3}Characteristics of Lexicon-Based Methods}{20}{subsection.64}%
+\contentsline {section}{\numberline {3.3}Summary}{21}{section.65}%
+\contentsline {chapter}{\numberline {4}System Architecture}{22}{chapter.66}%
+\contentsline {section}{\numberline {4.1}Motivation and Contributions}{22}{section.67}%
+\contentsline {section}{\numberline {4.2}Model Selection and Evaluation}{23}{section.71}%
+\contentsline {subsection}{\numberline {4.2.1}Evaluation Framework}{23}{subsection.72}%
+\contentsline {subsection}{\numberline {4.2.2}Model Comparison}{24}{subsection.73}%
+\contentsline {subsection}{\numberline {4.2.3}Selection Rationale}{24}{subsection.74}%
+\contentsline {section}{\numberline {4.3}Architecture Overview}{25}{section.75}%
+\contentsline {section}{\numberline {4.4}Data Ingestion Layer}{25}{section.77}%
+\contentsline {subsection}{\numberline {4.4.1}Tweet Generation Agent}{25}{subsection.78}%
+\contentsline {subsection}{\numberline {4.4.2}Apache Kafka Message Broker}{26}{subsection.79}%
+\contentsline {section}{\numberline {4.5}Data Processing Layer}{26}{section.80}%
+\contentsline {subsection}{\numberline {4.5.1}Raw Data Consumer}{26}{subsection.81}%
+\contentsline {subsection}{\numberline {4.5.2}NLP Consumer}{27}{subsection.82}%
+\contentsline {section}{\numberline {4.6}NLP Pipeline}{27}{section.83}%
+\contentsline {subsection}{\numberline {4.6.1}Preprocessing}{27}{subsection.84}%
+\contentsline {subsection}{\numberline {4.6.2}Emotion Detection}{27}{subsection.85}%
+\contentsline {subsection}{\numberline {4.6.3}Sentiment Classification}{28}{subsection.86}%
+\contentsline {subsection}{\numberline {4.6.4}Performance}{28}{subsection.87}%
+\contentsline {section}{\numberline {4.7}Data Storage Layer}{28}{section.88}%
+\contentsline {subsection}{\numberline {4.7.1}PostgreSQL Database}{28}{subsection.89}%
+\contentsline {subsection}{\numberline {4.7.2}Indexing Strategy}{29}{subsection.90}%
+\contentsline {section}{\numberline {4.8}API Layer}{29}{section.91}%
+\contentsline {subsection}{\numberline {4.8.1}REST API}{29}{subsection.92}%
+\contentsline {subsection}{\numberline {4.8.2}Server-Sent Events (SSE)}{29}{subsection.93}%
+\contentsline {section}{\numberline {4.9}Visualization Layer}{29}{section.94}%
+\contentsline {subsection}{\numberline {4.9.1}Frontend Architecture}{30}{subsection.95}%
+\contentsline {subsection}{\numberline {4.9.2}Inherited Visualizations}{30}{subsection.96}%
+\contentsline {subsection}{\numberline {4.9.3}Enhanced Visualizations}{30}{subsection.97}%
+\contentsline {section}{\numberline {4.10}Chatbot Architecture}{30}{section.98}%
+\contentsline {subsection}{\numberline {4.10.1}Local LLM Runtime}{31}{subsection.99}%
+\contentsline {subsection}{\numberline {4.10.2}NL2SQL Translation}{31}{subsection.100}%
+\contentsline {subsection}{\numberline {4.10.3}Chart Suggestion Agent}{31}{subsection.101}%
+\contentsline {subsection}{\numberline {4.10.4}Response Generation}{31}{subsection.102}%
+\contentsline {section}{\numberline {4.11}Design Principles}{31}{section.103}%
+\contentsline {section}{\numberline {4.12}Summary}{32}{section.104}%
+\contentsline {chapter}{\numberline {5}System Description}{33}{chapter.105}%
+\contentsline {section}{\numberline {5.1}TECVis 1.0 Visualizations}{33}{section.106}%
+\contentsline {subsection}{\numberline {5.1.1}Dot Plot Visualization}{33}{subsection.107}%
+\contentsline {section}{\numberline {5.2}TECVis 2.0 Enhancements}{34}{section.109}%
+\contentsline {subsection}{\numberline {5.2.1}New Time Series Visualizations}{34}{subsection.110}%
+\contentsline {subsubsection}{Horizon Charts: Emotions Across a State}{34}{section*.111}%
+\contentsline {subsubsection}{Geographic Emotion Comparison}{35}{section*.113}%
+\contentsline {subsubsection}{Emotion Difference and Radar Charts}{35}{section*.115}%
+\contentsline {section}{\numberline {5.3}Real-Time Processing Implementation}{37}{section.117}%
+\contentsline {subsection}{\numberline {5.3.1}Data Ingestion}{37}{subsection.118}%
+\contentsline {subsection}{\numberline {5.3.2}NLP Pipeline}{37}{subsection.119}%
+\contentsline {subsection}{\numberline {5.3.3}Database and API}{38}{subsection.120}%
+\contentsline {section}{\numberline {5.4}Conversational Interface}{39}{section.122}%
+\contentsline {subsection}{\numberline {5.4.1}Query Interface}{39}{subsection.124}%
+\contentsline {subsection}{\numberline {5.4.2}Query and Result Variability}{42}{subsection.127}%
+\contentsline {subsection}{\numberline {5.4.3}Chart Selection}{42}{subsection.130}%
+\contentsline {section}{\numberline {5.5}Summary}{43}{section.131}%
+\contentsline {chapter}{\numberline {6}Evaluation}{44}{chapter.132}%
+\contentsline {section}{\numberline {6.1}System Performance}{44}{section.133}%
+\contentsline {subsection}{\numberline {6.1.1}End-to-End Latency}{44}{subsection.134}%
+\contentsline {subsection}{\numberline {6.1.2}Throughput and Scalability}{44}{subsection.135}%
+\contentsline {subsection}{\numberline {6.1.3}Database Performance}{45}{subsection.136}%
+\contentsline {section}{\numberline {6.2}Model Performance}{45}{section.137}%
+\contentsline {subsection}{\numberline {6.2.1}Emotion Detection Accuracy}{45}{subsection.138}%
+\contentsline {subsection}{\numberline {6.2.2}Inference Speed}{46}{subsection.139}%
+\contentsline {subsection}{\numberline {6.2.3}Comparison with Other Models}{46}{subsection.140}%
+\contentsline {section}{\numberline {6.3}Chatbot Performance}{46}{section.142}%
+\contentsline {subsection}{\numberline {6.3.1}NL2SQL Accuracy}{46}{subsection.143}%
+\contentsline {subsection}{\numberline {6.3.2}Chart Selection Accuracy}{47}{subsection.144}%
+\contentsline {subsection}{\numberline {6.3.3}Response Quality}{47}{subsection.145}%
+\contentsline {section}{\numberline {6.4}Comparison with TECVis}{47}{section.146}%
+\contentsline {section}{\numberline {6.5}User Experience Evaluation}{48}{section.147}%
+\contentsline {subsection}{\numberline {6.5.1}User Experience Evaluation}{48}{subsection.148}%
+\contentsline {section}{\numberline {6.6}Design Considerations}{49}{section.149}%
+\contentsline {section}{\numberline {6.7}Summary}{50}{section.150}%
+\contentsline {chapter}{\numberline {7}Conclusion and Future Work}{51}{chapter.151}%
+\contentsline {section}{\numberline {7.1}Summary of Contributions}{51}{section.152}%
+\contentsline {section}{\numberline {7.2}Insights Gained}{52}{section.153}%
+\contentsline {section}{\numberline {7.3}Research Contributions}{52}{section.154}%
+\contentsline {section}{\numberline {7.4}Future Work}{52}{section.155}%
+\contentsline {section}{\numberline {7.5}Conclusion}{54}{section.156}%

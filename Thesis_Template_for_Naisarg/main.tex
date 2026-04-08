@@ -1,0 +1,276 @@
+\documentclass[
+12pt, 
+english,
+onehalfspacing,
+headsepline,
+]{MastersDoctoralThesis}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{palatino}
+\usepackage{xcolor}
+
+% Define SFSU brand color
+\definecolor{SFSUPurple}{HTML}{442C8B}
+
+% \addbibresource{Chapters/Bibi.bib}
+
+\usepackage[autostyle=true]{csquotes} 
+\usepackage{float}
+\usepackage{chngcntr}
+\counterwithout{figure}{chapter}
+\usepackage{subcaption}
+
+\usepackage{graphicx}
+% SVG support - requires Inkscape installed and shell-escape enabled
+% Compile with: pdflatex -shell-escape main.tex
+% Or convert SVGs to PDF manually and use \includegraphics
+\usepackage{svg}
+% Optimize graphics loading for faster compilation
+\graphicspath{{./Docs/Figures/}{./Figures/}{./Figures/Source/}}
+% Uncomment the line below to use draft mode (faster compilation, no images)
+% \draft
+\usepackage{wrapfig}
+\usepackage{lscape}
+\usepackage{rotating}
+\usepackage{epstopdf}
+
+\usepackage[normalem]{ulem}
+\useunder{\uline}{\ul}{}
+
+\geometry{
+    paper=a4paper,
+    inner=3cm,
+    outer=3.8cm,
+    bindingoffset=.5cm,
+    top=2.5cm,
+    bottom=2.5cm,
+}
+\usepackage{indentfirst}
+
+%----------------------------------------------------------------------------------------
+%	THESIS INFORMATION
+%----------------------------------------------------------------------------------------
+
+% Fix for buggy \thesistitle command in class file
+\makeatletter
+\RenewDocumentCommand{\thesistitle}{ o m }{
+	\IfNoValueTF{#1}{
+		\DeclareDocumentCommand{\shorttitle}{}{#2}
+	}{
+		\DeclareDocumentCommand{\shorttitle}{}{#1}
+	}
+	\DeclareDocumentCommand{\ttitle}{}{#2}
+	\title{#2}  % Also set \title for compatibility
+}
+\makeatother
+
+\thesistitle[Real-Time Emotion Analysis Platform]{Real-Time Emotion Analysis Platform for Social Media Data}
+\supervisor{Dr. Shahrukh Humayoun \& Dr. Jingyi Wang}
+\examiner{}
+\degree{Master of Science in Computer Science}
+\author{Naisarg Halvadiya}
+\addresses{}
+
+\subject{Natural Language Processing, Emotion Analysis, Social Media Analytics}
+\keywords{Emotion Analysis, NLP, Transformer Models, Real-time Analytics, Social Media, Sentiment Analysis, Data Visualization}
+
+\university{San Francisco State University}
+\faculty{College of Science and Engineering}
+\department{Department of Computer Science}
+\group{Department of Computer Science}
+
+% Configure hyperref - override class defaults after hyperref loads
+% Define SFSU Purple in RGB model for hyperref compatibility
+\definecolor{SFSUPurpleRGB}{RGB}{68,44,139}
+\makeatletter
+\AtEndPreamble{%
+\hypersetup{
+    pdftitle=\@title,
+    pdfauthor=\@author,
+    pdfkeywords={Emotion Analysis, NLP, Transformer Models, Real-time Analytics, Social Media, Sentiment Analysis, Data Visualization},
+    colorlinks=true,
+    linkcolor=SFSUPurpleRGB,
+    urlcolor=SFSUPurpleRGB,
+    citecolor=SFSUPurpleRGB,
+    filecolor=SFSUPurpleRGB,
+}%
+}
+\makeatother
+
+\begin{document}
+
+\frontmatter
+
+\let\cleardoublepage\clearpage
+
+\pagestyle{plain}
+
+%----------------------------------------------------------------------------------------
+%	TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+\begin{singlespacing}
+
+\newgeometry{
+    paper=a4paper,
+    inner=2cm,
+    outer=2.8cm,
+    bindingoffset=.5cm,
+    top=1.5cm,
+    bottom=1.5cm,
+    }
+
+\begin{titlepage}
+\begin{center}
+
+\vspace*{.06\textheight}
+
+{\scshape\LARGE \textcolor{SFSUPurple}{\univname}\par}\vspace{1.5cm}
+
+\textsc{\Large Master's Thesis}\\[0.5cm]
+
+\HRule \\[0.4cm]
+
+{\huge\bfseries \ttitle\par}\vspace{0.4cm}
+
+\HRule \\[1.5cm]
+
+\begin{flushleft}
+\emph{Author:}\\
+Naisarg Halvadiya
+\end{flushleft}
+
+\begin{flushleft}
+\emph{Supervisors:}\\
+\href{https://faculty.sfsu.edu/~humayoun/}{\textcolor{SFSUPurple}{Dr. Shahrukh Humayoun}}\\
+\href{https://cs.sfsu.edu/people/jingyi-wang}{\textcolor{SFSUPurple}{Dr. Jingyi Wang}}
+\end{flushleft}
+ 
+\vfill
+
+\large \textit{A thesis submitted in partial fulfillment of the requirements\\
+for the degree of \degreename\\~\\
+in the Department of Computer Science}\\[0.3cm]
+ 
+\vfill
+
+{\large \today}\\[4cm]
+
+\end{center}
+\end{titlepage}
+
+\restoregeometry
+
+\end{singlespacing}
+
+%----------------------------------------------------------------------------------------
+%	DECLARATION
+%----------------------------------------------------------------------------------------
+
+\begin{singlespacing}
+
+\begin{declaration}
+\addchaptertocentry{\authorshipname}
+
+\noindent I, \authorname, declare that this thesis titled, \enquote{\ttitle} and the work presented in it are my own. I confirm that:
+
+\begin{itemize} 
+\item This work was done wholly or mainly while in candidature for a research degree at this University.
+\item Where any part of this thesis has previously been submitted for a degree or qualification at this or any other institution, this has been clearly stated.
+\item Where I have consulted the published work of others, this is always clearly attributed.
+\end{itemize}
+
+\end{declaration}
+
+\end{singlespacing}
+
+%----------------------------------------------------------------------------------------
+%	ACKNOWLEDGEMENTS
+%----------------------------------------------------------------------------------------
+
+\begin{singlespacing}
+
+\begin{acknowledgements}
+\addchaptertocentry{\acknowledgementname}
+
+\setlength{\parskip}{10pt plus 1pt minus 1pt}
+
+I am appreciative of my family's constant encouragement and support during my academic career. Their confidence in my skills has been a continual source of inspiration.
+
+I would like to express my sincere gratitude to my supervisor, Dr. Shahrukh Humayoun, for his invaluable support and flexibility throughout this project. His guidance, patience, and willingness to accommodate various challenges during the research process have been instrumental in the completion of this work.
+
+I would also like to thank the open-source community for making this research feasible. In particular, I am grateful to the developers of D3.js, Hugging Face Transformers, Ollama, Kafka, and various NLP tools and APIs that supported model integration and data processing throughout this work. The collaborative and innovative spirit of the open-source ecosystem has been invaluable to the success of this research.
+
+I would especially like to thank my San Francisco State University peers and colleagues for their insightful comments and discussions, which have enhanced our study.
+
+This thesis reflects not only my own work but also the combined efforts and support of all the individuals listed above. I sincerely appreciate having such an amazing network of support.\\[2cm]
+
+\noindent
+Author\\
+\authorname
+
+\end{acknowledgements}
+
+\newpage
+
+\end{singlespacing}
+
+%----------------------------------------------------------------------------------------
+%	ABSTRACT
+%----------------------------------------------------------------------------------------
+
+\begin{singlespacing}
+
+\begin{abstract}
+\addchaptertocentry{\abstractname} 
+
+Social media has matured into a shared record of how communities experience the world in real time. Posts arrive with timestamps, locations, and emotions attached, creating a living archive of public mood. The pace of these conversations creates opportunities for real-time analysis that can provide insights as events unfold. This thesis addresses the need for systems that can process, analyze, and visualize emotion data in real-time.
+
+To respond, I reworked the existing pipeline so it behaves more like a listener than a ledger. A tweet agent gathers the ongoing conversation, the processing layer translates each message into a profile of emotions without losing the geographic context, storage keeps the evolving memory, the API shares it immediately, and the interface gives it visual form. Each layer contributes its own perspective, but together they preserve the story of ``who felt what'' across place and time.
+
+The final piece is voice. A generative AI assistant allows someone to ask, in plain language, where emotions are shifting or which region shows the widest divide between optimism and worry. The chatbot answers with narrative context and a chart, closing the gap between complex analytics and human understanding. In the end, the system keeps pace with the public pulse, offering graduate-level rigor while still sounding like a conversation with someone who was actually paying attention.
+
+\end{abstract}
+
+\end{singlespacing}
+
+%----------------------------------------------------------------------------------------
+%	TABLE OF CONTENTS / FIGURES
+%----------------------------------------------------------------------------------------
+
+\tableofcontents
+
+\listoffigures
+
+%----------------------------------------------------------------------------------------
+%	CHAPTERS
+%----------------------------------------------------------------------------------------
+
+\mainmatter
+
+\pagestyle{thesis}
+
+\include{Chapters/Chapter1}
+\include{Chapters/Chapter2} 
+\include{Chapters/Chapter3}
+\include{Chapters/Chapter4} 
+\include{Chapters/Chapter5}
+\include{Chapters/Chapter6}
+\include{Chapters/Chapter7}
+
+%----------------------------------------------------------------------------------------
+%	APPENDICES
+%----------------------------------------------------------------------------------------
+
+% Appendices removed to avoid repetition with main chapters
+% All essential content is covered in Chapters 2-7
+
+%----------------------------------------------------------------------------------------
+%	BIBLIOGRAPHY
+%----------------------------------------------------------------------------------------
+
+\bibliographystyle{plain} % Standard bibliography style for citations
+\bibliography{Chapters/Bibi}
+
+\end{document}

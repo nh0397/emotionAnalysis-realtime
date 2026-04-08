@@ -1,0 +1,425 @@
+% Appendix B - System Architecture
+
+\chapter{System Architecture Details} % Main appendix title
+
+\label{AppendixB} % For referencing this appendix elsewhere, use \ref{AppendixB}
+
+This appendix provides detailed technical specifications and architecture diagrams for the emotion analysis platform.
+
+%----------------------------------------------------------------------------------------
+%	SYSTEM ARCHITECTURE OVERVIEW
+%----------------------------------------------------------------------------------------
+
+\section{System Architecture Overview}
+
+The emotion analysis platform is built using a microservices architecture that enables scalability, maintainability, and fault tolerance.
+
+\begin{figure}[!htb]
+\centering
+{\includegraphics[width=0.9\textwidth]{../../Docs/Figures/system_architecture_detailed.png}}
+\caption{Detailed System Architecture Diagram}
+\label{fig:system_architecture_detailed}
+\end{figure}
+
+%----------------------------------------------------------------------------------------
+%	MICROSERVICES SPECIFICATIONS
+%----------------------------------------------------------------------------------------
+
+\section{Microservices Specifications}
+
+\subsection{Data Ingestion Service}
+\begin{itemize}
+\item \textbf{Technology}: Python with Flask
+\item \textbf{Purpose}: Collect and preprocess social media data
+\item \textbf{Endpoints}: REST API for data ingestion
+\item \textbf{Scaling}: Horizontal scaling with load balancer
+\end{itemize}
+
+\subsection{NLP Processing Service}
+\begin{itemize}
+\item \textbf{Technology}: Python with PyTorch and Transformers
+\item \textbf{Purpose}: Emotion analysis and sentiment classification
+\item \textbf{Models}: DistilRoBERTa, RoBERTa, VADER
+\item \textbf{Scaling}: GPU-enabled containers for model inference
+\end{itemize}
+
+\subsection{Database Service}
+\begin{itemize}
+\item \textbf{Technology}: PostgreSQL with TimescaleDB extension
+\item \textbf{Purpose}: Data persistence and aggregation
+\item \textbf{Features}: Automatic triggers for real-time aggregation
+\item \textbf{Scaling}: Read replicas for analytical queries
+\end{itemize}
+
+\subsection{Message Queue Service}
+\begin{itemize}
+\item \textbf{Technology}: Apache Kafka with Zookeeper
+\item \textbf{Purpose}: Real-time data streaming and processing
+\item \textbf{Topics}: Raw data, processed data, error handling
+\item \textbf{Scaling}: Partition-based scaling
+\end{itemize}
+
+\subsection{API Gateway Service}
+\begin{itemize}
+\item \textbf{Technology}: Python with FastAPI
+\item \textbf{Purpose}: API routing and authentication
+\item \textbf{Features}: Rate limiting, request validation
+\item \textbf{Scaling}: Horizontal scaling with load balancer
+\end{itemize}
+
+\subsection{Visualization Service}
+\begin{itemize}
+\item \textbf{Technology}: React.js with D3.js
+\item \textbf{Purpose}: Interactive data visualization
+\item \textbf{Features}: Real-time updates, responsive design
+\item \textbf{Scaling}: CDN distribution for static assets
+\end{itemize}
+
+%----------------------------------------------------------------------------------------
+%	DATA FLOW ARCHITECTURE
+%----------------------------------------------------------------------------------------
+
+\section{Data Flow Architecture}
+
+The data flow through the system follows a pipeline architecture with multiple processing stages.
+
+\begin{figure}[!htb]
+\centering
+{\includegraphics[width=0.9\textwidth]{../../Docs/Figures/data_flow_architecture.png}}
+\caption{Data Flow Architecture Diagram}
+\label{fig:data_flow_architecture}
+\end{figure}
+
+\subsection{Data Ingestion Pipeline}
+\begin{enumerate}
+\item \textbf{Data Collection}: Social media APIs and data sources
+\item \textbf{Data Validation}: Quality checks and filtering
+\item \textbf{Data Preprocessing}: Cleaning and normalization
+\item \textbf{Message Queuing}: Kafka topic for raw data
+\end{enumerate}
+
+\subsection{Processing Pipeline}
+\begin{enumerate}
+\item \textbf{Message Consumption}: Kafka consumer groups
+\item \textbf{NLP Processing}: Emotion analysis and sentiment classification
+\item \textbf{Data Enrichment}: Geographic and temporal metadata
+\item \textbf{Result Storage}: Database insertion with triggers
+\end{enumerate}
+
+\subsection{Visualization Pipeline}
+\begin{enumerate}
+\item \textbf{Data Retrieval}: API calls to database
+\item \textbf{Data Aggregation}: Real-time aggregation queries
+\item \textbf{Visualization Rendering}: D3.js chart generation
+\item \textbf{Real-time Updates}: WebSocket connections
+\end{enumerate}
+
+%----------------------------------------------------------------------------------------
+%	DATABASE SCHEMA SPECIFICATIONS
+%----------------------------------------------------------------------------------------
+
+\section{Database Schema Specifications}
+
+\subsection{Tweets Table}
+\begin{verbatim}
+CREATE TABLE tweets (
+    id SERIAL PRIMARY KEY,
+    tweet_id BIGINT UNIQUE NOT NULL,
+    username VARCHAR(255),
+    raw_text TEXT,
+    timestamp TIMESTAMP,
+    state_code VARCHAR(2),
+    state_name VARCHAR(100),
+    context VARCHAR(100),
+    likes INTEGER DEFAULT 0,
+    retweets INTEGER DEFAULT 0,
+    replies INTEGER DEFAULT 0,
+    views INTEGER DEFAULT 0,
+    sentiment VARCHAR(20),
+    sentiment_confidence FLOAT,
+    anger FLOAT,
+    fear FLOAT,
+    sadness FLOAT,
+    surprise FLOAT,
+    joy FLOAT,
+    anticipation FLOAT,
+    trust FLOAT,
+    disgust FLOAT,
+    dominant_emotion VARCHAR(20),
+    emotion_confidence FLOAT,
+    compound FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{verbatim}
+
+\subsection{Emotion Aggregates Table}
+\begin{verbatim}
+CREATE TABLE emotion_aggregates (
+    id SERIAL PRIMARY KEY,
+    state_code VARCHAR(2) UNIQUE NOT NULL,
+    state_name VARCHAR(100),
+    sentiment_positive_count INTEGER DEFAULT 0,
+    sentiment_negative_count INTEGER DEFAULT 0,
+    sentiment_neutral_count INTEGER DEFAULT 0,
+    sentiment_positive_avg FLOAT,
+    sentiment_negative_avg FLOAT,
+    sentiment_neutral_avg FLOAT,
+    anger_avg FLOAT,
+    fear_avg FLOAT,
+    sadness_avg FLOAT,
+    surprise_avg FLOAT,
+    joy_avg FLOAT,
+    anticipation_avg FLOAT,
+    trust_avg FLOAT,
+    disgust_avg FLOAT,
+    tweet_count INTEGER DEFAULT 0,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\end{verbatim}
+
+\subsection{Database Triggers}
+\begin{verbatim}
+CREATE OR REPLACE FUNCTION update_emotion_aggregates()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO emotion_aggregates (
+        state_code, state_name,
+        sentiment_positive_count, sentiment_negative_count, sentiment_neutral_count,
+        sentiment_positive_avg, sentiment_negative_avg, sentiment_neutral_avg,
+        anger_avg, fear_avg, sadness_avg, surprise_avg, joy_avg, 
+        anticipation_avg, trust_avg, disgust_avg, tweet_count, last_updated
+    )
+    SELECT 
+        state_code, state_name,
+        COUNT(CASE WHEN sentiment = 'positive' THEN 1 END),
+        COUNT(CASE WHEN sentiment = 'negative' THEN 1 END),
+        COUNT(CASE WHEN sentiment = 'neutral' THEN 1 END),
+        AVG(CASE WHEN sentiment = 'positive' THEN sentiment_confidence END),
+        AVG(CASE WHEN sentiment = 'negative' THEN sentiment_confidence END),
+        AVG(CASE WHEN sentiment = 'neutral' THEN sentiment_confidence END),
+        AVG(anger), AVG(fear), AVG(sadness), AVG(surprise), AVG(joy), 
+        AVG(anticipation), AVG(trust), AVG(disgust), COUNT(*), CURRENT_TIMESTAMP
+    FROM tweets 
+    WHERE state_code = COALESCE(NEW.state_code, OLD.state_code)
+    GROUP BY state_code, state_name
+    ON CONFLICT (state_code) DO UPDATE SET
+        sentiment_positive_count = EXCLUDED.sentiment_positive_count,
+        sentiment_negative_count = EXCLUDED.sentiment_negative_count,
+        sentiment_neutral_count = EXCLUDED.sentiment_neutral_count,
+        sentiment_positive_avg = EXCLUDED.sentiment_positive_avg,
+        sentiment_negative_avg = EXCLUDED.sentiment_negative_avg,
+        sentiment_neutral_avg = EXCLUDED.sentiment_neutral_avg,
+        anger_avg = EXCLUDED.anger_avg,
+        fear_avg = EXCLUDED.fear_avg,
+        sadness_avg = EXCLUDED.sadness_avg,
+        surprise_avg = EXCLUDED.surprise_avg,
+        joy_avg = EXCLUDED.joy_avg,
+        anticipation_avg = EXCLUDED.anticipation_avg,
+        trust_avg = EXCLUDED.trust_avg,
+        disgust_avg = EXCLUDED.disgust_avg,
+        tweet_count = EXCLUDED.tweet_count,
+        last_updated = EXCLUDED.last_updated;
+    
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+\end{verbatim}
+
+%----------------------------------------------------------------------------------------
+%	API SPECIFICATIONS
+%----------------------------------------------------------------------------------------
+
+\section{API Specifications}
+
+\subsection{REST API Endpoints}
+
+\subsubsection{Data Endpoints}
+\begin{itemize}
+\item \textbf{GET /data} - Get aggregated emotion data for dot plot visualization
+\item \textbf{GET /tweets/stream} - Real-time tweet stream via Server-Sent Events
+\item \textbf{GET /tweets/aggregated/stream} - Real-time aggregated data stream
+\item \textbf{GET /tweets/historical} - Historical tweet data with filtering
+\end{itemize}
+
+\subsubsection{Time Series Endpoints}
+\begin{itemize}
+\item \textbf{GET /timeSeriesData/<state\_code>} - Time series data for specific state
+\item \textbf{GET /timeSeriesData/emotion/<emotion>} - Time series data for specific emotion
+\item \textbf{GET /timeSeriesData/compare/<state1>/<state2>/<emotion>} - Comparative time series data
+\end{itemize}
+
+\subsubsection{Analytics Endpoints}
+\begin{itemize}
+\item \textbf{GET /emotionAcrossStates/<emotion>} - Emotion distribution across states
+\item \textbf{GET /compareStates/<state1>/<state2>/<emotion>} - State comparison data
+\item \textbf{GET /analytics/summary} - System analytics summary
+\end{itemize}
+
+\subsection{API Response Formats}
+
+\subsubsection{Standard Response Format}
+\begin{verbatim}
+{
+    "status": "success",
+    "data": [...],
+    "metadata": {
+        "timestamp": "2024-01-15T10:30:00Z",
+        "count": 1500,
+        "page": 1,
+        "total_pages": 10
+    }
+}
+\end{verbatim}
+
+\subsubsection{Error Response Format}
+\begin{verbatim}
+{
+    "status": "error",
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid state code provided",
+        "details": {
+            "field": "state_code",
+            "value": "XX",
+            "expected": "2-letter state code"
+        }
+    }
+}
+\end{verbatim}
+
+%----------------------------------------------------------------------------------------
+%	DEPLOYMENT SPECIFICATIONS
+%----------------------------------------------------------------------------------------
+
+\section{Deployment Specifications}
+
+\subsection{Container Configuration}
+
+\subsubsection{Docker Compose Configuration}
+\begin{verbatim}
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: tweetdb
+      POSTGRES_USER: tweetuser
+      POSTGRES_PASSWORD: tweetpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+    ports:
+      - "9092:9092"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  api-server:
+    build: ./backend
+    ports:
+      - "9000:9000"
+    depends_on:
+      - postgres
+      - kafka
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-server
+
+volumes:
+  postgres_data:
+\end{verbatim}
+
+\subsection{Environment Configuration}
+
+\subsubsection{Backend Environment Variables}
+\begin{verbatim}
+DATABASE_URL=postgresql://tweetuser:tweetpass@localhost:5432/tweetdb
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+KAFKA_TOPIC_RAW_DATA=raw_tweets
+KAFKA_TOPIC_PROCESSED_DATA=processed_tweets
+MODEL_CACHE_DIR=/app/models
+LOG_LEVEL=INFO
+\end{verbatim}
+
+\subsubsection{Frontend Environment Variables}
+\begin{verbatim}
+REACT_APP_API_BASE_URL=http://localhost:9000
+REACT_APP_WS_URL=ws://localhost:9000/ws
+REACT_APP_UPDATE_INTERVAL=5000
+\end{verbatim}
+
+%----------------------------------------------------------------------------------------
+%	MONITORING AND LOGGING
+%----------------------------------------------------------------------------------------
+
+\section{Monitoring and Logging}
+
+\subsection{Application Metrics}
+\begin{itemize}
+\item \textbf{Request Rate}: API requests per second
+\item \textbf{Response Time}: Average and 95th percentile response times
+\item \textbf{Error Rate}: Percentage of failed requests
+\item \textbf{Throughput}: Messages processed per second
+\end{itemize}
+
+\subsection{System Metrics}
+\begin{itemize}
+\item \textbf{CPU Usage}: Processor utilization across services
+\item \textbf{Memory Usage}: RAM consumption and garbage collection
+\item \textbf{Disk I/O}: Database and file system performance
+\item \textbf{Network I/O}: Data transfer rates and latency
+\end{itemize}
+
+\subsection{Business Metrics}
+\begin{itemize}
+\item \textbf{Tweets Processed}: Total number of tweets analyzed
+\item \textbf{Emotions Detected}: Distribution of detected emotions
+\item \textbf{Geographic Coverage}: Number of states with data
+\item \textbf{User Engagement}: API usage and visualization interactions
+\end{itemize}
+
+%----------------------------------------------------------------------------------------
+%	SECURITY SPECIFICATIONS
+%----------------------------------------------------------------------------------------
+
+\section{Security Specifications}
+
+\subsection{Authentication and Authorization}
+\begin{itemize}
+\item \textbf{API Keys}: Rate-limited access to public endpoints
+\item \textbf{JWT Tokens}: Secure authentication for admin endpoints
+\item \textbf{Role-based Access}: Different permission levels for different users
+\end{itemize}
+
+\subsection{Data Security}
+\begin{itemize}
+\item \textbf{Encryption}: TLS/SSL for all data transmission
+\item \textbf{Data Anonymization}: Removal of personally identifiable information
+\item \textbf{Access Logging}: Comprehensive audit trail for data access
+\end{itemize}
+
+\subsection{Infrastructure Security}
+\begin{itemize}
+\item \textbf{Network Isolation}: Private networks for internal services
+\item \textbf{Container Security}: Regular security updates and scanning
+\item \textbf{Secrets Management}: Secure storage of credentials and API keys
+\end{itemize}
+
+%----------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------

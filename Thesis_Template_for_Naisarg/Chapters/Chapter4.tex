@@ -1,0 +1,239 @@
+% Chapter 4 - System Architecture
+
+\chapter{System Architecture}
+\label{Chapter4}
+
+%----------------------------------------------------------------------------------------
+
+This chapter presents TECVis 2.0, a real-time emotion analysis platform that builds upon the original TECVis system while incorporating modern technologies and preserving its core strengths. Like TECVis, TECVis 2.0 focuses exclusively on analyzing social media data from the United States, enabling state-level geographic comparison of emotional responses. The chapter begins by establishing the motivation for this work, then describes the architecture and design decisions that enable real-time processing, improved accuracy, and conversational interfaces.
+
+%----------------------------------------------------------------------------------------
+
+\section{Motivation and Contributions}
+
+The original TECVis system demonstrated the value of combining emotion analysis with visual analytics for geographic and temporal comparison. As described in Chapter 3, the system used lexicon-based emotion detection methods (NRC and VADER) that were state-of-the-art in 2019. As the field advanced, transformer-based models became available that could understand context, adapt to new language patterns, and learn from data, creating opportunities to enhance emotion detection capabilities while preserving the system's core strengths.
+
+TECVis 2.0 incorporates three key enhancements:
+
+\begin{enumerate}
+\item \textbf{Real-time processing.} Replaces batch processing with a streaming architecture using Apache Kafka, enabling continuous data flow and reducing latency from hours or days to milliseconds.
+
+\item \textbf{Enhanced emotion detection.} Incorporates transformer models alongside the lexicon-based foundation, achieving 84\% accuracy compared to 41\% with VADER while maintaining reasonable inference speed for real-time applications.
+
+\item \textbf{Conversational interface.} Introduces a generative AI chatbot that enables users to query data using natural language, making complex analytics accessible to non-technical users without requiring database or visualization expertise.
+\end{enumerate}
+
+These contributions build upon TECVis's foundation while incorporating modern technologies that address evolving user needs and industry capabilities.
+ 
+%----------------------------------------------------------------------------------------
+
+\section{Model Selection and Evaluation}
+
+Before designing the architecture, an evaluation framework was developed to select the optimal emotion detection model for real-time processing. The goal was to find a model that significantly improved accuracy over lexicon-based methods while maintaining inference speed suitable for streaming applications.
+
+\subsection{Evaluation Framework}
+
+The Kaggle Twitter Emotion Dataset, containing 416,809 tweets labeled with six emotions (sadness, joy, love, anger, fear, and surprise), served as the benchmark for model comparison. This dataset provides a large-scale, real-world benchmark for emotion classification on Twitter data, making it ideal for evaluating models intended for social media analysis.
+
+The evaluation framework measured three key metrics:
+\begin{itemize}
+\item \textbf{Accuracy.} The percentage of correctly classified emotions, indicating how well the model performs on the task.
+\item \textbf{F1 Score.} A balanced metric considering both precision and recall, especially important for multi-class emotion classification where classes may be imbalanced.
+\item \textbf{Inference Speed.} The time required to process each tweet, critical for real-time applications where latency matters.
+\end{itemize}
+
+\subsection{Model Comparison}
+
+Multiple models were evaluated on this dataset:
+
+\begin{itemize}
+\item \textbf{VADER} (baseline): The lexicon-based method used in TECVis, achieving 41.2\% accuracy. This served as the baseline representing the previous system's capabilities.
+
+\item \textbf{GoEmotions-Electra}: Google's emotion classifier based on the Electra architecture, achieving 47.5\% accuracy with inference time of 0.063 seconds per tweet.
+
+\item \textbf{DistilRoBERTa-Emotion}: A distilled transformer model \cite{hartmann2023emotion}, achieving 84.0\% accuracy with inference time of 0.048 seconds per tweet.
+
+\item \textbf{RoBERTa-Large}: Full RoBERTa architecture \cite{liu2019roberta}, achieving 84.0\% accuracy with inference time of 0.049 seconds per tweet.
+\end{itemize}
+
+\subsection{Selection Rationale}
+
+DistilRoBERTa-Emotion was selected for TECVis 2.0 because it provided the optimal balance between accuracy and speed. The model achieved 84\% accuracy, more than double the 41\% achieved by VADER, while maintaining inference speed (0.048s per tweet) suitable for real-time processing. This represents a significant improvement in emotion detection quality while meeting the performance requirements of a streaming architecture.
+
+The evaluation demonstrated that transformer-based models can achieve substantial accuracy improvements over lexicon-based methods, validating the decision to modernize the emotion detection pipeline. This model selection informed the architecture design, ensuring the NLP pipeline could handle real-time processing requirements.
+
+%----------------------------------------------------------------------------------------
+
+\newpage
+\section{Architecture Overview}
+
+Figure~\ref{fig:new_architecture} shows the TECVis 2.0 architecture.
+
+\begin{figure}[htbp]
+\centering
+\includesvg[width=0.95\textwidth]{Figures/Source/tecvis_2.0}
+\caption{TECVis 2.0 Architecture: Real-time streaming pipeline with Kafka, NLP processing, and conversational interface.}
+\label{fig:new_architecture}
+\end{figure}
+
+The architecture follows a streaming pattern where data flows continuously from ingestion through processing to visualization. Each component operates independently, enabling horizontal scaling and fault tolerance. This design contrasts with TECVis's batch processing approach, where data was collected, processed, and then visualized in discrete stages.
+
+%----------------------------------------------------------------------------------------
+
+\section{Data Ingestion Layer}
+
+The data ingestion layer is responsible for collecting and introducing social media data into the system. This layer handles the initial entry point for all data, ensuring that tweets from US states are captured and prepared for downstream processing. The layer consists of a tweet generation agent and a message broker that coordinates data flow.
+
+\subsection{Tweet Generation Agent}
+
+For this proof-of-concept, a tweet generation agent simulates real-time social media activity. The agent uses Ollama to generate realistic tweet text based on configurable keywords, assigns US state locations, timestamps each message, and publishes tweets to Kafka at configurable intervals.
+
+This component is intentionally modular. The architecture allows swapping the agent with X's streaming API when production access becomes available, without requiring changes to other components. This design decision ensures the system can transition from proof-of-concept to production without architectural changes.
+
+\subsection{Apache Kafka Message Broker}
+
+Apache Kafka \cite{kreps2011kafka} serves as the message broker, decoupling producers from consumers. This design provides several benefits:
+
+\begin{itemize}
+\item \textbf{Asynchronous processing.} Producers and consumers operate independently, preventing bottlenecks and enabling different processing speeds.
+
+\item \textbf{Scalability.} Multiple consumers can process messages in parallel, increasing throughput as data volume grows.
+
+\item \textbf{Fault tolerance.} If a consumer encounters issues, messages remain in Kafka and can be reprocessed when the consumer recovers.
+
+\item \textbf{Buffering.} Kafka buffers messages, handling temporary spikes in production or consumption rates without data loss.
+\end{itemize}
+
+The agent publishes tweets to a Kafka topic. Two consumers subscribe to this topic, each handling a different aspect of processing, enabling parallel processing and independent scaling.
+
+%----------------------------------------------------------------------------------------
+
+\section{Data Processing Layer}
+
+The data processing layer transforms raw social media data into enriched records with emotion and sentiment classifications. This layer operates on streaming data from the ingestion layer, processing tweets in real-time as they arrive. The layer consists of two parallel consumers that handle different aspects of data processing, enabling independent scaling and fault tolerance.
+
+\subsection{Raw Data Consumer}
+
+The first consumer stores raw tweet data immediately upon receipt. This separation ensures that raw data is preserved, even if the NLP pipeline experiences delays or requires reprocessing. It also enables reprocessing of historical data if analysis methods change, providing flexibility for future improvements.
+
+\subsection{NLP Consumer}
+
+The second consumer processes tweets through the emotion detection pipeline. It preprocesses text, runs emotion detection using DistilRoBERTa-Emotion, runs sentiment classification using Twitter-RoBERTa \cite{cardiffnlp2023sentiment}, and stores enriched records with emotion scores and sentiment labels.
+
+The NLP consumer processes tweets independently of the raw data consumer, allowing the system to handle different processing speeds and enabling independent scaling of each component. This design enables the system to maintain real-time processing even if one component experiences delays.
+
+%----------------------------------------------------------------------------------------
+
+\section{NLP Pipeline}
+
+The NLP pipeline performs natural language processing on tweet text to extract emotions and sentiment. This pipeline transforms raw text into structured emotion scores and sentiment classifications that enable downstream analysis and visualization. The pipeline consists of preprocessing, emotion detection, and sentiment classification stages, each optimized for real-time processing of US social media data.
+
+\subsection{Preprocessing}
+
+Before model inference, the pipeline cleans tweet text: removing URLs, extracting words from hashtags, expanding contractions, and normalizing repeated characters. This preprocessing improves model performance by presenting clean, normalized text to the transformer models.
+
+\subsection{Emotion Detection}
+
+DistilRoBERTa-Emotion analyzes each tweet and returns probability scores for seven emotions: anger, disgust, fear, joy, sadness, surprise, and neutral. The model processes the entire tweet in parallel through self-attention mechanisms, returning probability distributions over emotion categories. All emotion scores are stored, not just the dominant emotion, enabling nuanced analysis and supporting visualization of emotion distributions.
+
+\subsection{Sentiment Classification}
+
+Cardiff NLP's Twitter-RoBERTa classifies each tweet as positive, negative, or neutral. This three-way classification complements the seven-way emotion classification, providing both fine-grained emotion analysis and broad sentiment categorization. The combination enables users to explore data at different levels of granularity.
+
+\subsection{Performance}
+
+The NLP pipeline processes tweets in approximately 0.05 seconds each on GPU, or 0.15 seconds on CPU. This performance meets the real-time processing requirements while providing the accuracy improvements demonstrated in the model evaluation.
+
+%----------------------------------------------------------------------------------------
+
+\section{Data Storage Layer}
+
+The data storage layer provides persistent storage for both raw tweets and processed emotion data. This layer enables efficient querying of historical data, supports real-time dashboard updates, and maintains state-level aggregations for fast geographic analysis. The layer uses PostgreSQL as the primary database, with optimized indexing strategies for common query patterns across US state data.
+
+\subsection{PostgreSQL Database}
+
+PostgreSQL stores both raw tweets and processed emotion data. The database schema includes raw tweet data, emotion scores, sentiment classifications, and pre-computed state-level and time-based aggregations for fast dashboard queries.
+
+\subsection{Indexing Strategy}
+
+PostgreSQL indexes are optimized for common query patterns: timestamp indexes for time-range queries, state code indexes for geographic filtering, dominant emotion indexes for emotion filtering, and composite indexes for multi-filter queries. These indexes ensure that dashboard queries execute in 10-50 milliseconds, even with millions of rows, and chatbot SQL queries execute in under 100 milliseconds.
+
+%----------------------------------------------------------------------------------------
+
+\section{API Layer}
+
+The API layer provides programmatic access to processed emotion data for the frontend and chatbot components. This layer serves aggregated data by state, time range, and emotion type, enabling efficient data retrieval for visualizations and queries. The layer consists of a REST API for standard HTTP requests and Server-Sent Events for real-time streaming updates.
+
+\subsection{REST API}
+
+A REST API provides endpoints for dashboard data, time series data, comparison data, and metadata. The API serves aggregated emotion scores by state, time range, and emotion type, enabling the frontend to fetch data efficiently.
+
+\subsection{Server-Sent Events (SSE)}
+
+For real-time updates, the API uses Server-Sent Events to stream new data to the frontend as it arrives. This enables the dashboard to update automatically without requiring user refresh or polling, providing a real-time experience that matches the streaming architecture.
+
+%----------------------------------------------------------------------------------------
+
+\section{Visualization Layer}
+
+The visualization layer presents emotion data through interactive charts and maps that enable users to explore patterns across US states. This layer combines inherited visualizations from TECVis with new visualization types that extend the platform's capabilities. The layer is built with React and uses D3.js and Recharts for rendering interactive visualizations.
+
+\subsection{Frontend Architecture}
+
+The frontend is built with React and uses D3.js and Recharts for visualizations. The architecture separates data fetching, state management, and visualization rendering, enabling modular development and maintenance.
+
+\subsection{Inherited Visualizations}
+
+The platform inherits TECVis's core visualizations: the dot plot for geographic comparison and the tornado chart for state-to-state comparison. These visualizations are preserved to maintain continuity with the original system while benefiting from the improved data quality provided by transformer-based emotion detection.
+
+\subsection{Enhanced Visualizations}
+
+New visualizations extend the platform's capabilities: horizon charts for temporal emotion intensity, difference charts for state comparisons, and dynamic chart selection by the chatbot based on query results and user intent.
+
+%----------------------------------------------------------------------------------------
+
+\section{Chatbot Architecture}
+
+The chatbot architecture enables users to query emotion data using natural language, making complex analytics accessible without requiring database or visualization expertise. This architecture translates natural language questions into SQL queries, executes them against the database, selects appropriate visualizations, and generates natural language summaries. The architecture runs entirely on local LLMs to preserve privacy, keeping all queries and results on the user's machine.
+
+\subsection{Local LLM Runtime}
+
+The chatbot runs on Ollama, a local large language model runtime. This design choice prioritizes privacy: all queries and results remain on the user's machine, making the system suitable for sensitive or proprietary analysis. Ollama supports multiple models, with Mistral used for SQL generation and chart selection.
+
+\subsection{NL2SQL Translation}
+
+When a user asks a natural language question, the system analyzes the question to understand intent, maps location names to state codes, maps temporal references to date ranges, generates valid PostgreSQL syntax using the database schema, and validates the SQL query for common errors. The prompt includes the database schema, example queries, and explicit rules for PostgreSQL syntax.
+
+\subsection{Chart Suggestion Agent}
+
+After query execution, a chart suggestion agent analyzes the results and selects an appropriate visualization based on data structure, user intent, and column patterns. The agent selects from available chart types: line charts for time series, stacked bar charts for composition, grouped bar charts for comparison, radar charts for multi-dimensional profiles.
+
+\subsection{Response Generation}
+
+After rendering the visualization, the chatbot generates a natural language summary explaining what the data shows. This narrative layer helps users understand the results without needing to interpret charts themselves, making complex analytics accessible to non-technical users.
+
+%----------------------------------------------------------------------------------------
+
+\section{Design Principles}
+
+The architecture follows several design principles:
+
+\begin{itemize}
+\item \textbf{Modularity.} Components are decoupled, enabling independent development, testing, and deployment.
+
+\item \textbf{Scalability.} The streaming architecture enables horizontal scaling by adding consumers or API instances.
+
+\item \textbf{Fault tolerance.} Kafka buffers messages, and consumers can recover from interruptions without data loss.
+
+\item \textbf{Privacy.} Local LLM runtime keeps queries and results private.
+
+\item \textbf{Extensibility.} The architecture supports adding new visualizations, data sources, or analysis methods without major restructuring.
+\end{itemize}
+
+%----------------------------------------------------------------------------------------
+
+\section{Summary}
+
+This chapter presented TECVis 2.0's architecture, including motivation, contributions, and model selection. Transformer-based models achieved substantial accuracy improvements over lexicon-based methods. The streaming architecture enables real-time processing, while modular design supports scalability and extensibility. The next chapter details implementation and user interactions.
+
+%----------------------------------------------------------------------------------------

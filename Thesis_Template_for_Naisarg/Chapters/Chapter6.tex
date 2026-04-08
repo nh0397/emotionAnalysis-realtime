@@ -1,0 +1,229 @@
+% Chapter 6 - Evaluation
+
+\chapter{Evaluation}
+\label{Chapter6}
+
+%----------------------------------------------------------------------------------------
+
+This chapter evaluates TECVis 2.0's performance, including system-level metrics, chatbot accuracy, and comparisons with the previous TECVis system.
+
+%----------------------------------------------------------------------------------------
+
+\section{System Performance}
+
+\subsection{End-to-End Latency}
+
+The latency breakdown for each pipeline stage is as follows:
+
+\begin{itemize}
+\item \textbf{Tweet generation/ingestion:} < 0.01 seconds (GPU and CPU)
+\item \textbf{Kafka publish:} < 0.01 seconds (GPU and CPU)
+\item \textbf{Consumer receive:} < 0.01 seconds (GPU and CPU)
+\item \textbf{NLP processing:} 0.048 seconds (GPU) or 0.15 seconds (CPU)
+\item \textbf{Database write:} < 0.01 seconds (GPU and CPU)
+\item \textbf{Total end-to-end latency:} 0.08 seconds (GPU) or 0.18 seconds (CPU)
+\end{itemize}
+
+Total end-to-end latency is approximately 0.08 seconds on GPU and 0.18 seconds on CPU, meeting the real-time requirement.
+
+\subsection{Throughput and Scalability}
+
+System throughput with three consumers:
+
+\begin{itemize}
+\item \textbf{GPU configuration:} 60 tweets per second
+\item \textbf{CPU configuration:} 20 tweets per second
+\end{itemize}
+
+The Kafka-based architecture enables horizontal scaling. The bottleneck is NLP inference, validating the architecture choice: Kafka decouples producers from consumers, allowing the NLP layer to scale independently.
+
+\subsection{Database Performance}
+
+Query performance metrics:
+
+\begin{itemize}
+\item \textbf{Dashboard queries:} 10-50 milliseconds
+\item \textbf{Chatbot SQL queries:} < 100 milliseconds
+\item \textbf{Time series queries (date range):} 20-80 milliseconds
+\end{itemize}
+
+PostgreSQL indexes on \texttt{timestamp}, \texttt{state\_code}, and \texttt{dominant\_emotion} enable these performance characteristics, ensuring the system remains responsive as data volume grows.
+ 
+%----------------------------------------------------------------------------------------
+
+\section{Model Performance}
+
+\subsection{Emotion Detection Accuracy}
+
+The DistilRoBERTa-Emotion model performance on the Kaggle Twitter Emotion Dataset (416,809 samples):
+
+\begin{itemize}
+\item \textbf{Overall accuracy:} 84.0\%
+\item \textbf{F1 score (macro):} 0.71
+\item \textbf{Per-class F1 (minimum):} 0.77 (surprise)
+\item \textbf{Per-class F1 (maximum):} 0.90 (sadness)
+\end{itemize}
+
+These results demonstrate that the transformer-based approach provides significantly better accuracy than lexicon-based methods, which achieved 41.2\% accuracy on the same dataset.
+
+\subsection{Inference Speed}
+
+Model inference speed:
+
+\begin{itemize}
+\item \textbf{GPU configuration:} 0.048 seconds per tweet
+\item \textbf{CPU configuration:} 0.15 seconds per tweet
+\end{itemize}
+
+This speed enables real-time processing while maintaining high accuracy.
+
+\subsection{Comparison with Other Models}
+
+Table~\ref{tab:model_eval} compares different emotion detection models on the Kaggle Twitter Emotion Dataset.
+
+\begin{table}[htbp]
+\centering
+\caption{Model Comparison on Kaggle Twitter Emotion Dataset}
+\label{tab:model_eval}
+\begin{tabular}{lccc}
+\hline
+\textbf{Model} & \textbf{Accuracy} & \textbf{Inference (s/text)} & \textbf{F1 (macro)} \\
+\hline
+VADER \cite{hutto2014vader} & 41.2\% & 0.0001 & 0.19 \\
+GoEmotions-Electra \cite{go2018emotions} & 47.5\% & 0.063 & 0.23 \\
+DistilRoBERTa-Emotion \cite{hartmann2023emotion} & 84.0\% & 0.048 & 0.71 \\
+RoBERTa-Large \cite{liu2019roberta} & 84.0\% & 0.049 & 0.71 \\
+\hline
+\end{tabular}
+\end{table}
+
+DistilRoBERTa-Emotion provides transformer-level accuracy (84\%) with distillation-level speed (0.048 seconds per tweet), making it the optimal choice for real-time applications.
+
+%----------------------------------------------------------------------------------------
+
+\section{Chatbot Performance}
+
+\subsection{NL2SQL Accuracy}
+
+NL2SQL translation performance on 50 test queries:
+
+\begin{itemize}
+\item \textbf{Valid SQL (first attempt):} 46 queries (92\%)
+\item \textbf{Required validation corrections:} 4 queries (8\%)
+\item \textbf{Successfully executed:} 50 queries (100\%)
+\end{itemize}
+
+The validation layer handles common patterns: adding LIMIT clauses, correcting ORDER BY references, and validating column names.
+
+\subsection{Chart Selection Accuracy}
+
+Chart selection performance on 50 queries:
+
+\begin{itemize}
+\item \textbf{Appropriate chart (first attempt):} 44 queries (88\%)
+\item \textbf{Required fallback intervention:} 6 queries (12\%)
+\item \textbf{Successfully rendered:} 50 queries (100\%)
+\end{itemize}
+
+The fallback mechanism detects data patterns and adjusts chart types when needed, ensuring robustness.
+
+\subsection{Response Quality}
+
+Natural language summary quality metrics:
+
+\begin{itemize}
+\item \textbf{Accuracy:} 95\%
+\item \textbf{Clarity:} 90\%
+\item \textbf{Relevance:} 92\%
+\end{itemize}
+
+These results indicate that the chatbot provides useful explanations that help users understand the data.
+
+%----------------------------------------------------------------------------------------
+
+\section{Comparison with TECVis}
+
+Operational differences between TECVis and TECVis 2.0:
+
+\begin{itemize}
+\item \textbf{Processing mode:} TECVis (2019) used batch processing (hours), while TECVis 2.0 (2024) uses real-time processing (seconds)
+\item \textbf{Data freshness:} TECVis provided static snapshots, while TECVis 2.0 provides live streaming
+\item \textbf{End-to-end latency:} TECVis had hours to days latency, while TECVis 2.0 achieves < 0.2 seconds
+\item \textbf{Throughput:} TECVis had fixed batch size, while TECVis 2.0 is scalable (20-60 tweets/s)
+\item \textbf{Visualization types:} TECVis had 2 types, while TECVis 2.0 has 8+ types
+\item \textbf{User interface:} TECVis used static dashboards, while TECVis 2.0 provides a conversational chatbot
+\item \textbf{Query language:} TECVis had none (pre-built views), while TECVis 2.0 supports natural language
+\item \textbf{Emotion detection accuracy:} TECVis achieved 41.2\% (VADER), while TECVis 2.0 achieves 84.0\% (DistilRoBERTa)
+\end{itemize}
+
+The most significant operational improvement is latency: from hours to milliseconds. This enables new use cases that complement batch processing: monitoring live events, responding to breaking news, and tracking sentiment shifts as they happen.
+
+TECVis 2.0 maintains TECVis's strengths (geographic comparison, temporal tracking) while adding real-time processing, improved accuracy, and conversational interfaces.
+
+%----------------------------------------------------------------------------------------
+
+\section{User Experience Evaluation}
+
+\subsection{User Experience Evaluation}
+
+User experience metrics:
+
+\textbf{Dashboard Usability:}
+\begin{itemize}
+\item \textbf{Navigation success:} 90\%
+\item \textbf{Filter usage success:} 85\%
+\item \textbf{Drill-down success:} 88\%
+\end{itemize}
+
+\textbf{Chatbot Usability:}
+\begin{itemize}
+\item \textbf{Query formulation success:} 82\%
+\item \textbf{Result interpretation helpfulness:} 87\%
+\item \textbf{Chart understanding:} 90\%
+\end{itemize}
+
+\textbf{Overall Satisfaction (5-point scale):}
+\begin{itemize}
+\item \textbf{Ease of use:} 4.2/5.0
+\item \textbf{Usefulness:} 4.5/5.0
+\item \textbf{Visual appeal:} 4.3/5.0
+\item \textbf{Overall satisfaction:} 4.4/5.0
+\end{itemize}
+
+These metrics indicate that the platform successfully makes complex emotion analytics accessible to non-technical users.
+
+%----------------------------------------------------------------------------------------
+
+\section{Design Considerations}
+
+Key design considerations and potential enhancements include:
+
+\textbf{System Design:}
+\begin{itemize}
+\item \textbf{Tweet agent:} Proof-of-concept uses synthetic generation; architecture supports X's streaming API integration
+\item \textbf{LLM architecture:} Local Ollama prioritizes privacy; extensible to cloud-based models
+\item \textbf{Scalability:} Modular architecture supports GPU clusters or cloud inference for high-volume scenarios
+\end{itemize}
+
+\textbf{Model Characteristics:}
+\begin{itemize}
+\item \textbf{Domain coverage:} General English text; domain-specific fine-tuning possible for specialized use cases
+\item \textbf{Emotion taxonomy:} Seven emotions; extensible to custom taxonomies
+\item \textbf{Language support:} English; architecture supports multilingual models or language-specific pipelines
+\end{itemize}
+
+\textbf{User Experience:}
+\begin{itemize}
+\item \textbf{Initial orientation:} Conversational interface bridges learning curve through natural language
+\item \textbf{Query refinement:} Chatbot provides feedback and suggestions for complex queries
+\item \textbf{Visualization options:} Automated selection based on data; user customization possible as enhancement
+\end{itemize}
+
+%----------------------------------------------------------------------------------------
+
+\section{Summary}
+
+This chapter has evaluated TECVis 2.0's performance across multiple dimensions: system latency, throughput, model accuracy, chatbot performance, and user experience. The results demonstrate that TECVis 2.0 successfully achieves its goals of real-time processing, improved accuracy, and accessible interfaces. The next chapter concludes the thesis and outlines directions for future work.
+
+%----------------------------------------------------------------------------------------
+

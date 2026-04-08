@@ -1,0 +1,144 @@
+% Chapter 2 - Related Work
+
+\chapter{Related Work}
+\label{Chapter2}
+
+%----------------------------------------------------------------------------------------
+
+This chapter reviews related work in visual analytics for social media, emotion analysis systems, and interactive visualization platforms. The review focuses on published research systems and platforms that address similar challenges to those addressed by TECVis 2.0.
+
+%----------------------------------------------------------------------------------------
+
+\section{Visual Analytics Foundations}
+
+Visual analytics combines automated analysis techniques with interactive visualizations to enable human understanding of complex data \cite{thomas2005visual}. The field emerged from the recognition that purely automated analysis often misses important patterns that humans can identify through visual exploration.
+
+Keim et al. \cite{keim2013visual} surveyed visual analytics approaches for social media, highlighting the importance of temporal, geographic, and network visualizations. They emphasized that effective social media analytics requires combining multiple visualization techniques to capture different aspects of the data.
+
+%----------------------------------------------------------------------------------------
+
+\section{Social Media Sentiment and Emotion Visualization Systems}
+
+Several research systems have been developed for visualizing sentiment and emotions in social media data. This section reviews published platforms that address similar challenges.
+
+\subsection{OpinionSeer}
+
+OpinionSeer \cite{wu2009opinionseer} is an interactive visualization system for analyzing customer opinions. The system's unique strength lies in its radial visualization approach, which effectively displays opinion distributions across multiple dimensions simultaneously. The system provides intuitive filtering capabilities that enable users to explore opinion data interactively.
+
+\begin{figure}[htbp]
+\centering
+\includesvg[width=0.8\textwidth]{Figures/Source/OpinionSeer}
+\caption{OpinionSeer architecture (Taken from Wu et al.~\cite{wu2009opinionseer})}
+\label{fig:opinionseer}
+\end{figure}
+
+While OpinionSeer demonstrates effective techniques for visualizing opinion distributions, it focuses on product reviews rather than social media streams. The system processes data in batch mode, which means it cannot provide real-time insights as new opinions arrive. Additionally, OpinionSeer does not incorporate geographic or temporal dimensions, limiting its ability to analyze how opinions vary across locations and time periods. These limitations motivated the need for a system that combines real-time processing with geographic-temporal visualization for social media emotion analysis.
+
+\subsection{TwitInfo}
+
+TwitInfo \cite{marcus2011twitinfo} is a system for visualizing Twitter event streams in real-time. The system's unique strength is its event detection and peak identification capabilities, which automatically identify significant events by detecting spikes in tweet volume. TwitInfo visualizes temporal patterns effectively, enabling users to understand how events unfold over time through interactive timeline visualizations.
+
+\begin{figure}[htbp]
+\centering
+\includesvg[width=0.8\textwidth]{Figures/Source/TwitInfo}
+\caption{TwitInfo architecture (Taken from Marcus et al.~\cite{marcus2011twitinfo})}
+\label{fig:twitinfo}
+\end{figure}
+
+TwitInfo demonstrates effective techniques for processing and visualizing real-time social media streams, but it focuses on event detection and volume analysis rather than emotion analysis. The system does not provide emotion classification or geographic visualization capabilities. While TwitInfo processes data in real-time, it does not incorporate modern transformer-based emotion detection models, limiting its ability to understand the emotional content of tweets. These gaps motivated the development of a system that combines real-time event processing with comprehensive emotion analysis and geographic visualization.
+
+\subsection{EmoViz}
+
+EmoViz \cite{emoviz2014} provides geographic visualization of emotions extracted from social media posts. The system's unique contribution is its ability to map emotions to geographic locations, enabling users to understand regional emotional patterns through interactive maps. EmoViz demonstrates how geographic visualization can reveal spatial patterns in emotional responses.
+
+\begin{figure}[htbp]
+\centering
+\includesvg[width=0.8\textwidth]{Figures/Source/EmoViz}
+\caption{EmoViz architecture (Taken from Wang et al.~\cite{emoviz2014})}
+\label{fig:emoviz}
+\end{figure}
+
+While EmoViz excels at geographic emotion visualization, it relies on lexicon-based emotion detection methods that achieve limited accuracy. The system processes data in batch mode rather than providing real-time streaming capabilities. Additionally, it does not incorporate conversational interfaces, requiring users to interact through predefined visualizations and filters. These limitations highlight the need for a system that combines real-time processing, modern transformer-based emotion detection, and conversational interfaces with geographic-temporal visualization.
+
+%----------------------------------------------------------------------------------------
+
+\section{Emotion Analysis in Social Media}
+
+Emotion analysis in social media has been addressed through various approaches, from lexicon-based methods to modern transformer models.
+
+\subsection{Lexicon-Based Approaches}
+
+Early emotion analysis systems relied on lexicons that map words to emotions. The NRC Emotion Lexicon \cite{mohammad2013nrc} maps approximately 14,000 words to eight emotions based on Plutchik's wheel of emotions \cite{plutchik1980emotion}. VADER \cite{hutto2014vader} was specifically designed for social media text, handling slang, emoticons, and punctuation-based emphasis.
+
+These lexicon-based approaches have advantages: they are fast, interpretable, and require no training data. They analyze words as independent tokens, which works well for straightforward emotional expressions. Transformer models build upon this foundation by understanding context, sarcasm, and nuanced emotional expressions.
+
+\subsection{Neural Network Approaches}
+
+Recurrent Neural Networks (RNNs) and Long Short-Term Memory (LSTM) networks improved emotion detection by capturing sequential dependencies in text \cite{hochreiter1997long}. These models process text sequentially, which provides strong performance for many tasks. Transformer models process entire sequences in parallel, enabling faster processing and better handling of long-range context.
+
+\subsection{Transformer-Based Approaches}
+
+The transformer architecture \cite{vaswani2017attention} revolutionized natural language processing by processing entire sequences in parallel through self-attention mechanisms. BERT \cite{devlin2018bert} and RoBERTa \cite{liu2019roberta} applied transformers to language understanding, achieving state-of-the-art performance on various NLP tasks.
+
+For emotion analysis, transformer models have shown significant improvements over lexicon-based methods. DistilRoBERTa-Emotion \cite{hartmann2023emotion} provides transformer-level accuracy while maintaining reasonable inference speed through model distillation \cite{sanh2019distilbert}.
+
+\subsection{Evaluation of Emotion Models}
+
+Several studies have evaluated emotion detection models on social media datasets. GoEmotions \cite{go2018emotions} introduced a dataset of fine-grained emotions from Reddit and evaluated various models. The Kaggle Twitter Emotion Dataset provides a large-scale benchmark for emotion classification on Twitter data.
+
+These evaluations consistently show that transformer-based models outperform lexicon-based methods, though the choice between accuracy and speed depends on the application requirements.
+
+%----------------------------------------------------------------------------------------
+
+\section{Geographic and Temporal Visualization}
+
+Several research systems have focused on visualizing social media data across geographic and temporal dimensions.
+
+\subsection{Geographic Visualization Systems}
+
+GeoSocial \cite{pat2015geosocial} provides geosocial search capabilities that enable users to find locations based on geotagged social media posts. The system's unique strength is its two-step process: first, quickly finding relevant areas using an indexed partition of space, and second, applying clustering on discovered areas to present more accurate results. The system demonstrates how geotagged posts can be used for geographic search, showing where people talk about different topics. For example, searches for terms like "jogging" or "sunset" can indicate popular locations associated with those activities.
+
+\begin{figure}[htbp]
+\centering
+\includesvg[width=0.8\textwidth]{Figures/Source/GeoSocial}
+\caption{GeoSocial architecture (Taken from Pat et al.~\cite{pat2015geosocial})}
+\label{fig:geosocial}
+\end{figure}
+
+While GeoSocial excels at geographic search based on social media content, it focuses on location discovery rather than emotion analysis. The system processes data in batch mode and does not incorporate real-time streaming capabilities or modern transformer-based emotion detection models. Additionally, it lacks temporal visualization components and conversational interfaces. These limitations highlight the need for a system that combines geographic visualization with real-time emotion analysis, temporal exploration, and conversational interfaces.
+
+\subsection{Temporal Visualization Techniques}
+
+Temporal visualization helps users understand how emotions evolve over time. Horizon charts \cite{healy2010horizon} provide an effective way to visualize multiple time series in a compact format. These charts stack colored bands to show intensity, making it easy to spot peaks and trends across multiple dimensions simultaneously. The technique's unique strength is its ability to display many time series in a space-efficient manner while maintaining readability.
+
+Sparklines \cite{tufte2006sparklines} provide another approach to temporal visualization, showing trends in a compact format. These visualizations are useful for displaying multiple time series simultaneously in minimal space, enabling users to quickly identify patterns across many dimensions.
+
+While these temporal visualization techniques are effective, they are typically applied to batch-processed data rather than real-time streams. They do not incorporate geographic dimensions or emotion analysis capabilities. Additionally, these techniques require users to interact through predefined interfaces rather than conversational queries. These limitations motivated the need for a system that combines effective temporal visualization with real-time processing, geographic analysis, and conversational interfaces.
+
+%----------------------------------------------------------------------------------------
+
+\section{Real-Time Data Processing}
+
+Real-time emotion analysis requires streaming data processing architectures. Apache Kafka \cite{kreps2011kafka} has become a standard for building real-time data pipelines, enabling decoupled producers and consumers that can scale independently. Kafka's unique strength is its ability to handle high-throughput, low-latency data streams while maintaining durability and fault tolerance. However, existing systems that utilize Kafka for social media analysis typically focus on general data processing rather than emotion analysis, and they do not incorporate modern transformer-based emotion detection models or conversational interfaces.
+
+%----------------------------------------------------------------------------------------
+
+\section{Conversational Interfaces for Data Exploration}
+
+Recent advances in generative AI have enabled conversational interfaces for data exploration. Natural Language to SQL (NL2SQL) translation allows users to query databases using plain English \cite{zhong2017seq2sql}, making database queries accessible to non-technical users. Chart suggestion systems analyze query results and recommend appropriate visualizations \cite{mackinlay2007show}, automatically selecting the most effective visualization type based on data characteristics and query intent.
+
+However, existing conversational interfaces for data exploration typically focus on static datasets rather than real-time streaming data. They do not incorporate emotion analysis or geographic-temporal visualization capabilities. Additionally, many systems require cloud-based LLM services, which may raise privacy concerns for sensitive data. These gaps motivated the need for a system that combines conversational interfaces with real-time emotion analysis, geographic-temporal visualization, and privacy-preserving local LLM execution.
+
+%----------------------------------------------------------------------------------------
+
+\section{Summary}
+
+This chapter has reviewed related work in visual analytics for social media, emotion analysis systems, geographic-temporal visualization, real-time processing, and conversational interfaces. The review examined published research systems and platforms, highlighting each system's unique contributions while identifying gaps that motivated the development of TECVis 2.0.
+
+The review reveals that while individual systems excel in specific areas, such as OpinionSeer's radial visualizations, TwitInfo's event detection, EmoViz's geographic emotion visualization, and GeoSocial's location-based search, no existing platform provides a unified solution that combines all these capabilities.
+
+Specifically, existing platforms lack one or more of the following: real-time streaming processing, modern transformer-based emotion detection, geographic-temporal visualization, and conversational interfaces. The absence of a platform that integrates all these capabilities motivated the development of TECVis 2.0, which combines real-time streaming architecture, modern transformer-based emotion detection, comprehensive geographic-temporal visualization, and privacy-preserving conversational interfaces in a unified system.
+
+The next chapter describes the TECVis system in detail, providing context for understanding how TECVis 2.0 builds upon and extends this foundation.
+
+%----------------------------------------------------------------------------------------

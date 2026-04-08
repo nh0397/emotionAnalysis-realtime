@@ -1,0 +1,138 @@
+\begin{thebibliography}{10}
+
+\bibitem{go2018emotions}
+Dorottya Demszky, Dana Movshovitz-Attias, Jeongwoo Ko, Alan Cowen, Gaurav
+  Nemade, and Sujith Ravi.
+\newblock Goemotions: A dataset of fine-grained emotions.
+\newblock {\em Proceedings of the 58th Annual Meeting of the Association for
+  Computational Linguistics}, pages 4040--4054, 2020.
+
+\bibitem{devlin2018bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock Bert: Pre-training of deep bidirectional transformers for language
+  understanding.
+\newblock {\em arXiv preprint arXiv:1810.04805}, 2018.
+
+\bibitem{hartmann2023emotion}
+Johannes Hartmann.
+\newblock Emotion english distilroberta-base.
+\newblock {\em Hugging Face Model Hub}, 2023.
+
+\bibitem{healy2010horizon}
+Kieran Healy.
+\newblock Horizon graphs: An alternative to stacked area charts.
+\newblock {\em IEEE Transactions on Visualization and Computer Graphics},
+  16(6):1135--1142, 2010.
+
+\bibitem{hochreiter1997long}
+Sepp Hochreiter and J{\"u}rgen Schmidhuber.
+\newblock Long short-term memory.
+\newblock {\em Neural computation}, 9(8):1735--1780, 1997.
+
+\bibitem{hutto2014vader}
+Clayton Hutto and Eric Gilbert.
+\newblock Vader: A parsimonious rule-based model for sentiment analysis of
+  social media text.
+\newblock {\em Proceedings of the International AAAI Conference on Web and
+  Social Media}, 8(1):216--225, 2014.
+
+\bibitem{keim2013visual}
+Daniel Keim, J{\"o}rn Kohlhammer, Geoffrey Ellis, and Florian Mansmann.
+\newblock Visual analytics: Combining automated discovery with interactive
+  visualizations.
+\newblock {\em Exploring Geovisualization}, pages 351--370, 2013.
+
+\bibitem{kreps2011kafka}
+Jay Kreps, Neha Narkhede, and Jun Rao.
+\newblock Kafka: a distributed messaging system for log processing.
+\newblock {\em Proceedings of the NetDB}, 2011.
+
+\bibitem{liu2019roberta}
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer
+  Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov.
+\newblock Roberta: A robustly optimized bert pretraining approach.
+\newblock {\em arXiv preprint arXiv:1907.11692}, 2019.
+
+\bibitem{mackinlay2007show}
+Jock Mackinlay, Pat Hanrahan, and Chris Stolte.
+\newblock Show me: Automatic presentation for visual analysis.
+\newblock {\em IEEE Transactions on Visualization and Computer Graphics},
+  13(6):1137--1144, 2007.
+
+\bibitem{marcus2011twitinfo}
+Adam Marcus, Michael~S Bernstein, Osama Badar, David~R Karger, Samuel Madden,
+  and Robert~C Miller.
+\newblock Twitinfo: Aggregating and visualizing microblogs for event
+  exploration.
+\newblock In {\em Proceedings of the SIGCHI Conference on Human Factors in
+  Computing Systems}, pages 227--236, 2011.
+
+\bibitem{mohammad2013nrc}
+Saif~M Mohammad and Peter~D Turney.
+\newblock Nrc word-emotion association lexicon.
+\newblock {\em National Research Council Canada}, 2013.
+
+\bibitem{tecvis2023}
+Ilya Nemtsov, MST~Jasmine Jahan, Chuting Yan, and Shah~Rukh Humayoun.
+\newblock Tecvis: A visual analytics tool to compare people's emotion feelings.
+\newblock {\em arXiv preprint arXiv:2309.04722}, 2023.
+
+\bibitem{cardiffnlp2023sentiment}
+Cardiff NLP.
+\newblock Twitter roberta-base for sentiment analysis.
+\newblock {\em Hugging Face Model Hub}, 2023.
+
+\bibitem{pat2015geosocial}
+Barak Pat, Yaron Kanza, and Mor Naaman.
+\newblock Geosocial search: Finding places based on geotagged social-media
+  posts.
+\newblock In {\em Proceedings of the 24th International Conference on World
+  Wide Web}, pages 231--241. ACM, 2015.
+
+\bibitem{plutchik1980emotion}
+Robert Plutchik.
+\newblock A general psychoevolutionary theory of emotion.
+\newblock {\em Theories of emotion}, 1:3--33, 1980.
+
+\bibitem{sanh2019distilbert}
+Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf.
+\newblock Distilbert, a distilled version of bert: smaller, faster, cheaper and
+  lighter.
+\newblock {\em arXiv preprint arXiv:1910.01108}, 2019.
+
+\bibitem{thomas2005visual}
+James~J Thomas and Kristin~A Cook.
+\newblock Illuminating the path: The research and development agenda for visual
+  analytics.
+\newblock {\em National Visualization and Analytics Center}, 2005.
+
+\bibitem{tufte2006sparklines}
+Edward~R Tufte.
+\newblock {\em Beautiful Evidence}.
+\newblock Graphics Press, 2006.
+
+\bibitem{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+  Aidan~N Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock {\em Advances in neural information processing systems}, 30, 2017.
+
+\bibitem{emoviz2014}
+Xiaoyu Wang, Ke~Zhang, Guowei Shen, et~al.
+\newblock Emoviz: Visualizing emotions in social media.
+\newblock {\em IEEE Transactions on Visualization and Computer Graphics},
+  20(12):2621--2630, 2014.
+
+\bibitem{wu2009opinionseer}
+Yingcai Wu, Furu Wei, Shixia Liu, Nanyu Au, Weiwei Cui, He~Zhou, and Huamin Qu.
+\newblock Opinionseer: Interactive visualization of hotel customer feedback.
+\newblock {\em IEEE Transactions on Visualization and Computer Graphics},
+  16(6):1109--1118, 2010.
+
+\bibitem{zhong2017seq2sql}
+Victor Zhong, Caiming Xiong, and Richard Socher.
+\newblock Seq2sql: Generating structured queries from natural language using
+  reinforcement learning.
+\newblock In {\em arXiv preprint arXiv:1709.00103}, 2017.
+
+\end{thebibliography}

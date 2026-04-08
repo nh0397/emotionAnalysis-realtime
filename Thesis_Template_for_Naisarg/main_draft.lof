@@ -1,0 +1,23 @@
+\babel@toc {english}{}\relax 
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {1}{\ignorespaces OpinionSeer architecture (Taken from Wu et al.~\cite {wu2009opinionseer})}}{9}{figure.caption.32}%
+\contentsline {figure}{\numberline {2}{\ignorespaces TwitInfo architecture (Taken from Marcus et al.~\cite {marcus2011twitinfo})}}{9}{figure.caption.34}%
+\contentsline {figure}{\numberline {3}{\ignorespaces EmoViz architecture (Taken from Wang et al.~\cite {emoviz2014})}}{10}{figure.caption.36}%
+\contentsline {figure}{\numberline {4}{\ignorespaces GeoSocial architecture (Taken from Pat et al.~\cite {pat2015geosocial})}}{12}{figure.caption.44}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {5}{\ignorespaces TECVis Original Architecture (2019): Batch processing pipeline from Twitter scraping to visualization.}}{16}{figure.caption.52}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {6}{\ignorespaces TECVis 2.0 Architecture: Real-time streaming pipeline with Kafka, NLP processing, and conversational interface.}}{25}{figure.caption.76}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {7}{\ignorespaces TECVis 1.0 Dot Plot: Multi-dimensional visualization showing emotion scores across all US states with interactive filters.}}{34}{figure.caption.108}%
+\contentsline {figure}{\numberline {8}{\ignorespaces TECVis 2.0 Horizon Charts: All emotions for California over time with intensity bands.}}{35}{figure.caption.112}%
+\contentsline {figure}{\numberline {9}{\ignorespaces TECVis 2.0 Geographic Comparison: Single emotion (fear) displayed across all states over time.}}{36}{figure.caption.114}%
+\contentsline {figure}{\numberline {10}{\ignorespaces TECVis 2.0 Comparison Visualizations: Difference chart (left) and radar chart (right) for state-level emotion analysis.}}{36}{figure.caption.116}%
+\contentsline {figure}{\numberline {11}{\ignorespaces Chatbot System Flow: Complete pipeline from natural language query to SQL translation, query execution, chart selection, and response generation.}}{39}{figure.caption.123}%
+\contentsline {figure}{\numberline {12}{\ignorespaces Chatbot Query Interface: Example query asking about emotion trends across states.}}{40}{figure.caption.125}%
+\contentsline {figure}{\numberline {13}{\ignorespaces Chatbot Result Modal: Three-tab interface showing SQL query, raw data, and visualization.}}{41}{figure.caption.126}%
+\contentsline {figure}{\numberline {14}{\ignorespaces Chatbot Query Variability: Different query types demonstrating the system's adaptability to various question formats.}}{42}{figure.caption.128}%
+\contentsline {figure}{\numberline {15}{\ignorespaces Chatbot Result Variability: Different result visualizations demonstrating adaptive chart selection based on query results.}}{42}{figure.caption.129}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
